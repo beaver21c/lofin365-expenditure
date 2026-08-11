@@ -73,7 +73,9 @@ jobs:
           retention-days: 90
 
       - name: 결과 커밋
-        if: github.event.inputs.commit != 'false'
+        # 타입이 있는 입력은 inputs 로 읽는다. github.event.inputs 는
+        # 언제나 문자열이라 boolean 과 비교하면 어긋난다.
+        if: inputs.commit
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

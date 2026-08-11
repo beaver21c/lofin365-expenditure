@@ -15,7 +15,12 @@ on:
         required: false
         default: ''
   push:
-    branches: [main]
+    # 기본 브랜치 이름을 하나로 못 박지 않는다. 이 저장소는 빈 상태에서
+    # 작업 브랜치로 첫 푸시가 들어가 그 브랜치가 기본이 되었고,
+    # 나중에 main 으로 정리될 수도 있다. 둘 다 받는다.
+    branches:
+      - main
+      - 'claude/**'
     paths:
       - 'web/**'
       - 'scripts/**'
