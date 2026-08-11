@@ -1,0 +1,86 @@
+name: 1. 원자료 측정
+
+# 설계에 남아 있는 추정치를 실측값으로 바꾼다.
+# 원자료 1개년만 내려받아 재므로 몇 분이면 끝난다.
+# 결과는 docs/measurement/ 에 커밋되어 그대로 읽을 수 있다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: '측정할 연도 (공백 구분, 비우면 최근 1개년)'
+        required: false
+        default: ''
+      commit:
+        description: '결과를 저장소에 커밋'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 토큰 확인
+        env:
+          SOURCE_REPO_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+        run: |
+          if [ -z "$SOURCE_REPO_TOKEN" ]; then
+            echo "::error title=SOURCE_REPO_TOKEN 없음::원자료 저장소를 읽을 토큰이 설정되지 않았습니다. docs/SETUP.md 의 '토큰 발급' 절을 따라 주십시오."
+            exit 1
+          fi
+          echo "토큰이 설정되어 있습니다."
+
+      - name: 측정 실행
+        env:
+          SOURCE_REPO_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+          SOURCE_REPO: ${{ vars.SOURCE_REPO || 'beaver21c/lofin365-expenditure-collector' }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.years }}" ]; then
+            ARGS="--years ${{ github.event.inputs.years }}"
+          fi
+          python scripts/measure.py $ARGS
+
+      - name: 요약 출력
+        run: |
+          {
+            echo "## 측정 결과"
+            echo ""
+            sed -n '1,120p' docs/measurement/MEASUREMENT.md
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: 결과 아티팩트
+        uses: actions/upload-artifact@v4
+        with:
+          name: measurement
+          path: docs/measurement/
+          retention-days: 90
+
+      - name: 결과 커밋
+        if: github.event.inputs.commit != 'false'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/measurement/
+          if git diff --staged --quiet; then
+            echo "변경 없음"
+          else
+            git commit -m "측정 결과 갱신 (run ${{ github.run_number }})"
+            git push
+          fi

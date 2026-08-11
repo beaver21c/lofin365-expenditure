@@ -1,0 +1,122 @@
+name: 2. 대시보드 빌드 및 배포
+
+# 원자료를 집계해 대시보드를 만들고 Pages 에 배포한다.
+#
+# 산출물을 저장소에 커밋하지 않는 것이 중요하다. 집계 결과가 수십 MB인데
+# 커밋하면 git 이 모든 버전을 영구 보관해서, 집계 로직을 손볼 때마다
+# 저장소가 되돌릴 수 없이 불어난다. Actions 아티팩트로 바로 배포하면
+# 저장소에는 코드만 남고, 배포도 통째로 교체되어 중간 상태가 생기지 않는다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: '집계할 연도 (공백 구분, 비우면 전체)'
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'scripts/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 토큰 확인
+        env:
+          SOURCE_REPO_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+        run: |
+          if [ -z "$SOURCE_REPO_TOKEN" ]; then
+            echo "::error title=SOURCE_REPO_TOKEN 없음::원자료 저장소를 읽을 토큰이 설정되지 않았습니다. docs/SETUP.md 를 참고하십시오."
+            exit 1
+          fi
+
+      - name: 원자료 캐시
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: lofin-raw-${{ github.event.inputs.years || 'all' }}
+          restore-keys: lofin-raw-
+
+      - name: 집계 실행
+        env:
+          SOURCE_REPO_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+          SOURCE_REPO: ${{ vars.SOURCE_REPO || 'beaver21c/lofin365-expenditure-collector' }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.years }}" ]; then
+            ARGS="--years ${{ github.event.inputs.years }}"
+          fi
+          python scripts/aggregate.py $ARGS
+
+      - name: 빌드 요약
+        run: |
+          {
+            echo "## 빌드 결과"
+            echo ""
+            python - <<'PY'
+          import json, pathlib
+          m = json.loads(pathlib.Path("_site/data/manifest.json").read_text(encoding="utf-8"))
+          s = m["sizes"]
+          print(f"- 빌드 시각: {m['built_at']}")
+          print(f"- 연도: {', '.join(str(y['y']) for y in m['years'])}")
+          print(f"- 시도 {len(m['sido'])} / 자치단체 {len(m['regions'])} / 부문 {len(m['parts'])}")
+          print(f"- 집계 데이터 {s['agg_total_bytes']/1e6:.1f} MB")
+          print(f"- 세부사업 {s['biz_files']}개 파일, 합계 {s['biz_total_bytes']/1e6:.1f} MB "
+                f"(평균 {s['biz_avg_bytes']/1024:.0f} KB, 최대 {s['biz_max_bytes']/1024:.0f} KB)")
+          v = m["validation"]
+          print(f"- 재원 항등식 불일치 {v['revenue_identity_mismatch_rows']:,}행 "
+                f"({v['revenue_identity_mismatch_rate']:.4%})")
+          if m["warnings"]:
+              print("")
+              print("### 경고")
+              for w in m["warnings"]:
+                  print(f"- {w}")
+          PY
+          } >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: 배포 주소
+        run: |
+          echo "### 대시보드 배포 완료" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY

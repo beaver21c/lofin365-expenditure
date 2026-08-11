@@ -1,0 +1,323 @@
+/*
+ * 대시보드 스타일.
+ *
+ * 문서가 아니라 조작하는 화면이라, 읽는 흐름보다 훑어보는 속도를 우선했다.
+ * 상태는 색만이 아니라 형태로도 드러나게 한다 — 색각 이상이나 흑백 인쇄에서도
+ * 같은 정보가 남아야 하기 때문이다.
+ */
+
+:root {
+  --bg: #F4F6F8;
+  --surface: #FFFFFF;
+  --surface-2: #FAFBFC;
+  --ink: #16202E;
+  --ink-2: #4A5666;
+  --ink-3: #7C8798;
+  --rule: #DCE1E8;
+  --rule-2: #EDF0F4;
+  --navy: #14324F;
+  --navy-2: #1E4B76;
+  --navy-soft: #E7EDF3;
+  --ok: #0F6E4C;
+  --ok-bg: #E6F2EC;
+  --warn: #8A6218;
+  --warn-bg: #FAF1DE;
+  --err: #A32B2B;
+  --err-bg: #FBEAEA;
+  --shadow: 0 1px 2px rgba(20, 50, 79, .06), 0 2px 10px rgba(20, 50, 79, .05);
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "D2Coding", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Malgun Gothic",
+          "Apple SD Gothic Neo", sans-serif;
+  --radius: 7px;
+
+  /* 차트 색. app.js 가 여기서 읽어 가므로 테마를 따라간다.
+     본인 지자체만 유채색으로 강조하고 분포는 무채색으로 둔다. */
+  --c-self: #1E4B76;
+  --c-median: #8A94A2;
+  --c-band: rgba(138, 148, 162, .18);
+  --c-cmp1: #B4622A;
+  --c-cmp2: #3F7D5C;
+  --c-cmp3: #6E4E86;
+  --c-other: #C3CAD3;
+  --c-inside: #FFFFFF;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161D;
+    --surface: #191F29;
+    --surface-2: #1D2530;
+    --ink: #DEE5ED;
+    --ink-2: #A8B4C2;
+    --ink-3: #76828F;
+    --rule: #2B3644;
+    --rule-2: #222B36;
+    --navy: #8FB4D6;
+    --navy-2: #A8C6E0;
+    --navy-soft: #1B2A39;
+    --ok: #66C79C;
+    --ok-bg: #15281E;
+    --warn: #D8AC57;
+    --warn-bg: #292317;
+    --err: #E8918E;
+    --err-bg: #2B1A1A;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 10px rgba(0, 0, 0, .25);
+
+    /* 어두운 바탕에서는 같은 색이 묻힌다. 대비를 살려 다시 잡는다 */
+    --c-self: #6FA8DC;
+    --c-median: #97A2AF;
+    --c-band: rgba(151, 162, 175, .16);
+    --c-cmp1: #E0A06A;
+    --c-cmp2: #7FBF9B;
+    --c-cmp3: #B294CC;
+    --c-other: #46525F;
+    --c-inside: #0E141B;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14.5px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+h1, h2, h3 { margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+code { font-family: var(--mono); font-size: .88em; background: var(--rule-2);
+       padding: .1em .38em; border-radius: 3px; color: var(--navy); }
+.small { font-size: 12.5px; color: var(--ink-3); }
+.hint { font-size: 12px; color: var(--ink-3); font-weight: 400; }
+.err { color: var(--err); }
+
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; border-radius: 3px; }
+
+/* ── 상단 ─────────────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: .6rem 1.2rem;
+  padding: 1rem 1.6rem;
+  background: var(--surface);
+  border-bottom: 2px solid var(--navy);
+}
+.topbar h1 { font-size: 18px; font-weight: 730; }
+.topbar .sub { margin: .1rem 0 0; font-size: 12.5px; color: var(--ink-3); }
+
+.status {
+  display: flex; align-items: center; gap: .45rem;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+}
+.status .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ink-3); flex: none;
+}
+.status.ready .dot { background: var(--ok); }
+.status.warn .dot  { background: var(--warn); }
+.status.err .dot   { background: var(--err); }
+
+/* ── 빈 상태 ──────────────────────────────────────────── */
+.empty {
+  max-width: 720px; margin: 3rem auto; padding: 1.6rem 1.8rem;
+  background: var(--surface); border: 1px solid var(--rule);
+  border-left: 4px solid var(--warn); border-radius: var(--radius);
+}
+.empty h2 { font-size: 17px; margin-bottom: .5rem; }
+.empty ol { padding-left: 1.2rem; }
+.empty li { margin: .4rem 0; }
+
+/* ── 조회 조건 ────────────────────────────────────────── */
+.controls, .panelctl {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1.1rem;
+  padding: .85rem 1.6rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+.panelctl {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--rule);
+  border-radius: var(--radius) var(--radius) 0 0;
+  margin-bottom: 0;
+}
+.ctl { display: flex; flex-direction: column; gap: .28rem; min-width: 0; }
+.ctl.grow { flex: 1 1 240px; }
+.ctl > label, .ctl > legend {
+  font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  color: var(--ink-3); text-transform: uppercase;
+  display: flex; align-items: baseline; gap: .4rem;
+}
+fieldset.ctl { border: 0; margin: 0; padding: 0; }
+
+select, input[type="search"] {
+  font: inherit; font-size: 13.5px;
+  padding: .38rem .55rem;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 5px;
+  min-width: 8rem; max-width: 100%;
+}
+input[type="search"] { min-width: 12rem; }
+select:hover, input:hover { border-color: var(--ink-3); }
+
+.checks { display: flex; gap: .7rem; flex-wrap: wrap; padding-top: .2rem; }
+.checks label, .switch {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: 13.5px; cursor: pointer; white-space: nowrap;
+}
+.switch { padding-top: .3rem; }
+
+/* 단위 전환 — 모든 그래프에 함께 적용되므로 한 곳에만 둔다 */
+.segmented {
+  display: inline-flex; border: 1px solid var(--rule);
+  border-radius: 5px; overflow: hidden; background: var(--surface);
+}
+.segmented button {
+  font: inherit; font-size: 13px; padding: .35rem .7rem;
+  background: none; color: var(--ink-2); border: 0;
+  border-right: 1px solid var(--rule); cursor: pointer; white-space: nowrap;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button:hover { background: var(--rule-2); }
+.segmented button[aria-pressed="true"] {
+  background: var(--navy); color: var(--surface); font-weight: 650;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .segmented button[aria-pressed="true"] { color: #0E141B; }
+}
+
+/* 비교지역 칩 */
+.chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.chips:empty { display: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: 12.5px; padding: .17rem .3rem .17rem .5rem;
+  background: var(--navy-soft); color: var(--navy);
+  border: 1px solid var(--rule); border-radius: 20px;
+}
+.chip button {
+  font: inherit; line-height: 1; padding: 0 .15rem;
+  background: none; border: 0; color: inherit; cursor: pointer; opacity: .7;
+}
+.chip button:hover { opacity: 1; }
+
+/* ── 탭 ───────────────────────────────────────────────── */
+.tabs {
+  display: flex; gap: .2rem; padding: 0 1.6rem;
+  background: var(--surface); border-bottom: 1px solid var(--rule);
+}
+.tabs button {
+  font: inherit; font-size: 14px; font-weight: 600;
+  padding: .6rem 1.1rem; background: none; color: var(--ink-3);
+  border: 0; border-bottom: 2.5px solid transparent; cursor: pointer;
+  margin-bottom: -1px;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--navy); border-bottom-color: var(--navy); }
+
+/* ── 패널 ─────────────────────────────────────────────── */
+.panel { padding: 1.1rem 1.6rem 3rem; display: flex; flex-direction: column; gap: 1.1rem; }
+/* display:flex 는 UA 의 [hidden]{display:none} 보다 우선순위가 높아
+   탭을 숨겨도 그대로 보인다. 명시적으로 되돌린다. */
+.panel[hidden], [hidden] { display: none !important; }
+.panel > .panelctl { margin: -1.1rem -1.6rem 0; border-radius: 0; }
+
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.1rem; }
+
+figure.chart {
+  margin: 0; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+figure.chart figcaption {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .8rem; flex-wrap: wrap;
+  padding: .7rem 1rem; border-bottom: 1px solid var(--rule-2);
+}
+figure.chart figcaption h3 { font-size: 14px; font-weight: 700; }
+.acts { display: flex; gap: .35rem; }
+
+.btn {
+  font: inherit; font-size: 12px; font-weight: 600;
+  padding: .28rem .6rem; cursor: pointer;
+  background: var(--surface); color: var(--ink-2);
+  border: 1px solid var(--rule); border-radius: 4px;
+}
+.btn:hover { background: var(--navy-soft); color: var(--navy); border-color: var(--navy); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+.plot { width: 100%; min-height: 340px; }
+#chartDonut, #chartParts { min-height: 400px; }
+
+.note {
+  margin: 0; padding: .55rem 1rem .75rem;
+  font-size: 12px; color: var(--ink-3); line-height: 1.55;
+  border-top: 1px solid var(--rule-2);
+}
+.note:empty { display: none; }
+
+/* ── 요약 ─────────────────────────────────────────────── */
+.summary {
+  display: flex; flex-wrap: wrap; gap: .8rem;
+  padding: .9rem 1rem; background: var(--surface);
+  border: 1px solid var(--rule); border-left: 4px solid var(--navy);
+  border-radius: var(--radius);
+}
+.summary .kpi { display: flex; flex-direction: column; gap: .1rem; min-width: 8rem; }
+.summary .kpi .k {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+  color: var(--ink-3); text-transform: uppercase;
+}
+.summary .kpi .v {
+  font-size: 19px; font-weight: 730; font-variant-numeric: tabular-nums;
+  color: var(--navy); line-height: 1.25;
+}
+.summary .kpi .u { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+
+/* ── 표 ───────────────────────────────────────────────── */
+.tablewrap {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.tablehead {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .8rem; padding: .7rem 1rem; border-bottom: 1px solid var(--rule-2);
+}
+.tablehead h3 { font-size: 14px; font-weight: 700; }
+.scroll { overflow-x: auto; max-height: 30rem; overflow-y: auto; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: .42rem .7rem; text-align: left; border-bottom: 1px solid var(--rule-2); white-space: nowrap; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--navy); color: #fff;
+  font-size: 11.5px; font-weight: 650; letter-spacing: .02em;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) thead th { color: #0E141B; }
+}
+tbody tr:nth-child(even) { background: var(--surface-2); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 12.5px; }
+td.name { white-space: normal; min-width: 16rem; }
+tbody tr.clickable { cursor: pointer; }
+tbody tr.clickable:hover { background: var(--navy-soft); }
+
+/* ── 하단 ─────────────────────────────────────────────── */
+.foot {
+  padding: .9rem 1.6rem 2rem;
+  border-top: 1px solid var(--rule);
+  font-size: 12px; color: var(--ink-3); line-height: 1.6;
+}
+.foot .warn { color: var(--warn); margin-top: .3rem; }
+.foot .warn:empty { display: none; }
+
+@media (max-width: 700px) {
+  .topbar, .controls, .panelctl, .tabs, .panel, .foot { padding-left: 1rem; padding-right: 1rem; }
+  .panel > .panelctl { margin-left: -1rem; margin-right: -1rem; }
+  .ctl.grow { flex-basis: 100%; }
+}
