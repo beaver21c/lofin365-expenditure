@@ -119,11 +119,12 @@
     <section class="panel" id="panel-comp" role="tabpanel" aria-labelledby="tab-comp" hidden>
       <header class="ph">
         <h2>한 해의 구성</h2>
-        <p>전체 세출 가운데 사회복지와 보건이 각각 얼마이고, 그 안에서 어느 부문이 큰지 봅니다.</p>
+        <p><strong>기준</strong>을 고르면 그것을 나눠 봅니다. 전체 세출 중 사회복지·보건, 사회복지 중 부문(081…), 보건 중 부문(091…), 두 분야 합계 중 부문까지 같은 방식으로 볼 수 있습니다.</p>
       </header>
 
       <div class="bar">
         <label class="fld"><span>연도</span><select id="selYear"></select></label>
+        <label class="fld"><span>기준 (무엇 중에서)</span><select id="compBase"></select></label>
         <p class="hint grow" id="compHint"></p>
       </div>
 
@@ -132,10 +133,10 @@
 
       <div class="split">
         <figure class="card">
-          <figcaption><h3>전체 세출 중 구성</h3><div class="acts">
+          <figcaption><h3 id="donutTitle">전체 세출 중 구성</h3><div class="acts">
             <button class="btn" data-export-i="donut">이미지</button></div></figcaption>
           <div id="chartDonut" class="plot"></div>
-          <p class="note">안쪽 고리는 전체 세출을 사회복지·보건·그 외로 나눈 것, 바깥 고리는 사회복지와 보건을 부문별로 나눈 것입니다.</p>
+          <p class="note" id="donutNote"></p>
         </figure>
 
         <figure class="card">
@@ -150,7 +151,7 @@
         <div class="ch"><h3>부문별 수치</h3>
           <button class="btn" data-export-x="comp">엑셀</button></div>
         <div class="scroll"><table id="tblComp"></table></div>
-        <p class="note">사회복지와 보건을 나누어 싣고, 각 분야 소계와 두 분야 합계를 함께 표시합니다.</p>
+        <p class="note" id="compTableNote"></p>
       </div>
     </section>
 
@@ -158,17 +159,13 @@
     <section class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" hidden>
       <header class="ph">
         <h2>지역 비교 지도</h2>
-        <p>시군구를 고르면 그 시도 안에서, 시도만 고르면 전국에서 어디가 많고 적은지 한눈에 봅니다. 지도를 누르면 그 지역이 선택되고, ＋－ 버튼이나 마우스 휠로 확대한 뒤 끌어서 옮길 수 있습니다.</p>
+        <p>시군구를 고르면 그 시도 안에서, 시도만 고르면 전국에서 어디가 많고 적은지 한눈에 봅니다. <strong>기준(분모)과 항목(분자)</strong>을 따로 골라 "전체 세출 중 사회복지 비율", "사회복지 중 기초생활보장 비중"처럼 볼 수 있습니다. 지도를 누르면 그 지역이 선택되고, ＋－ 버튼이나 마우스 휠로 확대한 뒤 끌어서 옮길 수 있습니다.</p>
       </header>
 
       <div class="bar">
         <label class="fld"><span>연도</span><select id="mapYear"></select></label>
-        <label class="fld"><span>분야</span><select id="mapField">
-          <option value="both">사회복지+보건 합계</option>
-          <option value="080">사회복지 (080)</option>
-          <option value="090">보건 (090)</option>
-        </select></label>
-        <label class="fld"><span>부문</span><select id="mapPart"><option value="">전체</option></select></label>
+        <label class="fld"><span>기준 (무엇 중에서)</span><select id="mapBase"></select></label>
+        <label class="fld"><span>항목 (무엇을)</span><select id="mapItem"></select></label>
         <div class="fld">
           <span id="mapLabelLabel">지역명</span>
           <div class="seg" role="group" aria-labelledby="mapLabelLabel" id="mapLabelMode">
@@ -269,19 +266,30 @@
       <h3>네 가지 화면</h3>
       <dl class="gl">
         <dt>추이</dt><dd>연도별 예산 변화를 선으로 봅니다. 같은 시도 시군구들의 <strong>1~3분위 음영</strong>과 중위값을 함께 그려 내 위치를 가늠할 수 있고, 다른 지역을 최대 3곳까지 겹쳐 볼 수 있습니다.</dd>
-        <dt>구성</dt><dd>한 해를 골라 전체 세출 중 사회복지·보건의 비중과 부문별 크기를 봅니다. 두 분야를 <strong>나누어 보여주고 합계도 함께</strong> 싣습니다.</dd>
-        <dt>지도</dt><dd>어디가 많고 적은지 색으로 봅니다. 시군구를 골랐으면 그 시도 안에서, 시도만 골랐으면 전국에서 비교합니다. 지도를 누르면 그 지역이 선택되고, <strong>＋－ 버튼이나 마우스 휠로 확대</strong>한 뒤 끌어서 옮길 수 있습니다.</dd>
+        <dt>구성</dt><dd>한 해를 골라 <strong>기준</strong>을 나눠 봅니다. 전체 세출 중 사회복지·보건, 사회복지 중 부문, 보건 중 부문, 두 분야 합계 중 부문 — 네 가지 기준을 고를 수 있습니다.</dd>
+        <dt>지도</dt><dd>어디가 많고 적은지 색으로 봅니다. 시군구를 골랐으면 그 시도 안에서, 시도만 골랐으면 전국에서 비교합니다. <strong>기준(분모)과 항목(분자)</strong>을 따로 골라 부문 단위까지 비교할 수 있습니다. 지도를 누르면 그 지역이 선택되고, <strong>＋－ 버튼이나 마우스 휠로 확대</strong>한 뒤 끌어서 옮길 수 있습니다.</dd>
         <dt>사업 검색</dt><dd>세부사업명에 특정 단어가 들어간 사업의 수와 예산을 찾습니다. 띄어쓰기는 무시하므로 "노인 일자리"와 "노인일자리"가 같게 검색됩니다. 제외어도 쓸 수 있습니다.</dd>
       </dl>
 
       <h3>단위와 비중</h3>
       <p>단위는 <strong>모든 그래프와 표에 함께</strong> 적용됩니다.
-        <code>%</code>를 고르면 <strong>한 단계 위 항목이 분모</strong>가 됩니다.</p>
+        <code>%</code>를 고르면 무엇으로 나눈 값인지가 중요해집니다.</p>
+      <p><strong>추이</strong> 화면은 <strong>한 단계 위 항목이 분모</strong>입니다.</p>
       <ul>
         <li>분야(080·090)를 보고 있으면 → <strong>전체 세출 대비</strong></li>
         <li>부문(081·08C 등)을 골랐으면 → <strong>그 부문의 상위 분야 대비</strong></li>
       </ul>
-      <p>화면에 분모가 무엇인지 항상 적히므로, 숫자를 인용할 때 그대로 옮기면 됩니다.</p>
+      <p><strong>구성·지도</strong> 화면은 분모를 <strong>직접 고릅니다.</strong>
+        같은 금액도 무엇으로 나누느냐에 따라 전혀 다른 이야기가 되기 때문입니다.</p>
+      <ul>
+        <li><strong>기준(무엇 중에서)</strong> — 전체 세출 / 사회복지(080) / 보건(090) / 두 분야 합계</li>
+        <li><strong>항목(무엇을)</strong> — 그 기준 아래에서 고를 수 있는 분야 또는 부문</li>
+      </ul>
+      <p>예를 들어 기초생활보장(081)은 <em>전체 세출의 약 26%</em>이면서
+        동시에 <em>사회복지의 약 29%</em>일 수 있습니다. 둘 다 맞는 값이고 묻는 것이 다릅니다.
+        지도에서 금액(원·억원 등)으로 볼 때는 나눗셈을 하지 않으므로 기준이 쓰이지 않습니다.</p>
+      <p>화면에 분모가 무엇인지 항상 적히고 엑셀에도 같이 실리므로,
+        숫자를 인용할 때 그대로 옮기면 됩니다.</p>
 
       <h3>분위 음영 읽는 법</h3>
       <p>회색 띠는 같은 시도 <strong>시군구들의 1분위~3분위 구간</strong>입니다.

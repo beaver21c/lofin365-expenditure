@@ -16,7 +16,7 @@
 
   const TABS = [
     { id: 'trend',  nm: '추이',      desc: '연도별 변화와 시도 분포 비교' },
-    { id: 'comp',   nm: '구성',      desc: '한 해의 분야·부문별 구성' },
+    { id: 'comp',   nm: '구성',      desc: '무엇 중 무엇인지 쪼개 보기' },
     { id: 'map',    nm: '지도',      desc: '지역별 많고 적음을 색으로' },
     { id: 'search', nm: '사업 검색', desc: '특정 단어가 든 사업의 수와 예산' },
   ];
@@ -26,7 +26,9 @@
     accounts: [], unit: LF.DEFAULT_UNIT,
     fields: ['080', '090'], part: '', compare: [], band: false,
     year: null, qTerms: '', qExclude: '', qMode: 'all', qPart: '',
-    mapYear: null, mapField: 'both', mapPart: '', mapScope: 'sido', mapLabel: 'none',
+    compBase: 'total',
+    mapYear: null, mapBase: 'total', mapItem: 'focus',
+    mapScope: 'sido', mapLabel: 'none',
     theme: 'auto',
   };
 
@@ -116,7 +118,9 @@
     if (state.qTerms) p.set('q', state.qTerms);
     if (state.mapScope !== 'sido') p.set('ms', state.mapScope);
     if (state.mapLabel !== 'none') p.set('ml', state.mapLabel);
-    if (state.mapField !== 'both') p.set('mf', state.mapField);
+    if (state.compBase !== 'total') p.set('cb', state.compBase);
+    if (state.mapBase !== 'total') p.set('mb', state.mapBase);
+    if (state.mapItem !== 'focus') p.set('mi', state.mapItem);
     history.replaceState(null, '', '#' + p.toString());
   }
   function readHash() {
@@ -135,7 +139,15 @@
     state.qTerms = g('q', '');
     state.mapScope = g('ms', 'sido') === 'nation' ? 'nation' : 'sido';
     state.mapLabel = ['none','name','both'].includes(g('ml','')) ? g('ml') : 'none';
-    state.mapField = ['both', '080', '090'].includes(g('mf', '')) ? g('mf') : 'both';
+
+    const bases = baseList().map(b => b.id);
+    state.compBase = bases.includes(g('cb', '')) ? g('cb') : 'total';
+    state.mapBase = bases.includes(g('mb', '')) ? g('mb') : 'total';
+    // 예전 주소는 지도 분야를 mf=both|080|090 로 담았다. 공유된 링크가
+    // 죽지 않도록 새 이름으로 옮겨 읽는다.
+    const legacy = g('mf', '');
+    const item = g('mi', '') || (legacy === 'both' ? 'focus' : legacy);
+    state.mapItem = validItem(state.mapBase, item || 'focus');
   }
 
   // ── 초기화 ──────────────────────────────────────────────
@@ -192,9 +204,14 @@
         + ps.map(p => `<option value="${p.cd}">${esc(p.nm)} (${p.cd})</option>`).join('')
         + '</optgroup>';
     }).join('');
-    ['#selPart', '#qPart', '#mapPart'].forEach(sel => {
+    ['#selPart', '#qPart'].forEach(sel => {
       $(sel).innerHTML = '<option value="">전체</option>' + partOpts;
     });
+
+    const baseOpts = baseList()
+      .map(b => `<option value="${b.id}">${esc(b.nm)}</option>`).join('');
+    $('#compBase').innerHTML = baseOpts;
+    $('#mapBase').innerHTML = baseOpts;
 
     const yearOpts = M.years.map(y => `<option value="${y.y}">${y.y}년</option>`).join('');
     $('#selYear').innerHTML = yearOpts;
@@ -247,8 +264,9 @@
     $('#selPart').value = state.part;
     $('#selYear').value = state.year;
     $('#mapYear').value = state.mapYear || state.year;
-    $('#mapField').value = state.mapField;
-    $('#mapPart').value = state.mapPart;
+    $('#compBase').value = state.compBase;
+    $('#mapBase').value = state.mapBase;
+    fillMapItems();
     $('#qTerms').value = state.qTerms;
     $('#qExclude').value = state.qExclude;
     $('#qMode').value = state.qMode;
@@ -259,6 +277,14 @@
     $$('#mapLabelMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lbl === state.mapLabel)));
     $$('#fieldChecks input').forEach(i => { i.checked = state.fields.includes(i.value); });
     renderCompareChips(); updateBandHint();
+  }
+
+  /** 항목 선택지는 기준에 딸린다. 기준을 바꾸면 목록을 다시 만든다. */
+  function fillMapItems() {
+    state.mapItem = validItem(state.mapBase, state.mapItem);
+    $('#mapItem').innerHTML = itemList(state.mapBase)
+      .map(it => `<option value="${esc(it.id)}">${esc(it.nm)}</option>`).join('');
+    $('#mapItem').value = state.mapItem;
   }
 
   function renderCompareChips() {
@@ -332,6 +358,60 @@
   function unitLabel() { return LF.UNITS[state.unit].label; }
   function fmt(v) { return LF.formatNumber(v, state.unit); }
   function fieldNm(cd) { const f = M._fieldByCd.get(cd); return f ? f.nm : cd; }
+
+  // ── 무엇 중에서(기준) 무엇을(항목) ───────────────────────
+  //
+  // 보고 싶은 것이 늘 '전체 중 사회복지' 인 것은 아니다. '사회복지 중
+  // 기초생활보장', '두 분야 합계 중 보건의료' 처럼 분모가 달라지면
+  // 같은 금액도 전혀 다른 이야기가 된다. 그래서 분모(기준)와
+  // 분자(항목)를 따로 고르게 하고, 고른 그대로 화면에 적는다.
+  //
+  // 분야·부문 목록은 매니페스트에서 나온다. 여기에 코드를 적어 두면
+  // 원자료에 없는 부문이 화면에 남거나 새 부문이 빠진다.
+  function focusNm() { return M.focus_fields.map(fieldNm).join('+'); }
+
+  function baseList() {
+    return [{ id: 'total', nm: '전체 세출' }]
+      .concat(M.focus_fields.map(cd => ({ id: cd, nm: `${fieldNm(cd)} (${cd})` })))
+      .concat([{ id: 'focus', nm: `${focusNm()} 합계` }]);
+  }
+  function baseNm(id) {
+    const b = baseList().find(x => x.id === id);
+    return b ? b.nm : id;
+  }
+  /** 기준에 들어가는 분야. null 이면 전 분야(=전체 세출). */
+  function baseFields(id) {
+    if (id === 'total') return null;
+    if (id === 'focus') return M.focus_fields.slice();
+    return [id];
+  }
+  /** 그 기준 아래에서 고를 수 있는 항목(분자). */
+  function itemList(baseId) {
+    if (baseId === 'total') {
+      return M.focus_fields.map(cd => ({ id: cd, nm: `${fieldNm(cd)} (${cd})` }))
+        .concat([{ id: 'focus', nm: `${focusNm()} 합계` }]);
+    }
+    const flds = baseId === 'focus' ? M.focus_fields : [baseId];
+    const head = baseId === 'focus'
+      ? { id: 'focus', nm: `${focusNm()} 전체` }
+      : { id: baseId, nm: `${fieldNm(baseId)} 전체 (${baseId})` };
+    return [head].concat(flds.flatMap(f => (M._partsOfField.get(f) || [])
+      .map(p => ({ id: 'p:' + p.cd, nm: `${p.nm} (${p.cd})`, fld: f }))));
+  }
+  function itemNm(baseId, id) {
+    const it = itemList(baseId).find(x => x.id === id);
+    return it ? it.nm : id;
+  }
+  /** 항목 → 조회 조건. 부문이면 parts, 분야면 fields. */
+  function itemSel(id) {
+    if (id === 'focus') return { fields: M.focus_fields.slice(), parts: null };
+    if (String(id).startsWith('p:')) return { fields: M.focus_fields.slice(), parts: [id.slice(2)] };
+    return { fields: [id], parts: null };
+  }
+  /** 그 기준에서 이 항목이 유효한가. 기준을 바꾸면 항목이 사라질 수 있다. */
+  function validItem(baseId, id) {
+    return itemList(baseId).some(x => x.id === id) ? id : itemList(baseId)[0].id;
+  }
 
   function scopeLabel() {
     if (state.part) { const p = M._partByCd.get(state.part); return p ? `${p.nm} (${p.cd})` : state.part; }
@@ -446,6 +526,14 @@
   }
 
   // ── ② 구성 ──────────────────────────────────────────────
+  //
+  // 무엇을 무엇으로 나눠 보는지가 이 화면의 전부다. 기준(분모)을 바꾸면
+  // 도넛·막대·표가 모두 그 기준의 구성으로 바뀐다.
+  //
+  //   전체 세출  → 사회복지 / 보건 / 그 외 분야  (+ 부문까지 두 겹)
+  //   사회복지   → 081 082 …
+  //   보건       → 091 093 …
+  //   두 분야 합계 → 두 분야의 부문 전부
   function renderComp() {
     if (!agg) return;
     const comp = LF.composition(agg, M, state.region, state.year, state.accounts);
@@ -460,69 +548,108 @@
     const others = Math.max(comp.total - focusSum, 0);
     const pct = v => comp.total ? v / comp.total * 100 : 0;
 
-    // 080·090 을 나누어 보여주고 합계도 함께 — 요구사항 그대로
+    const base = state.compBase;
+    const isField = focus.includes(base);
+    $('#donutTitle').textContent = `${baseNm(base)} 중 구성`;
+    const shownFields = base === 'total' || base === 'focus' ? focus : [base];
+    const baseTotal = base === 'total' ? comp.total
+      : base === 'focus' ? focusSum : (comp.byField.get(base) || 0);
+    // 기준 대비 %. 분모가 0이면 0%가 아니라 표시 불가다.
+    const bpct = v => baseTotal ? v / baseTotal * 100 : null;
+    const baseLabel = baseNm(base);
+    const palOf = fcd => (focus.indexOf(fcd) === 0 ? C.f080 : C.f090);
+
+    // 기준값은 늘 네 장 다 보여준다. 지금 고른 것이 어디에 해당하는지는
+    // 표시로 알린다 — 다른 셋도 함께 보여야 고른 값의 크기가 가늠된다.
     const u = state.unit === 'percent' ? 'billion' : state.unit;
     const money = v => LF.formatNumber(v / LF.UNITS[u].divisor, u);
+    const on = id => (id === base ? ' on' : '');
     $('#compKpis').innerHTML = focus.map((cd, i) => `
-      <div class="kpi f${cd}"><span class="k">${esc(fieldNm(cd))} (${cd})</span>
+      <div class="kpi f${cd}${on(cd)}"><span class="k">${esc(fieldNm(cd))} (${cd})</span>
         <span class="v">${money(totals[i])}</span>
         <span class="u">${LF.UNITS[u].label} · 전체 세출의 ${pct(totals[i]).toFixed(1)}%</span></div>`
     ).join('') + `
-      <div class="kpi"><span class="k">두 분야 합계</span>
+      <div class="kpi${on('focus')}"><span class="k">${esc(focusNm())} 합계</span>
         <span class="v">${money(focusSum)}</span>
         <span class="u">${LF.UNITS[u].label} · 전체 세출의 ${pct(focusSum).toFixed(1)}%</span></div>
-      <div class="kpi"><span class="k">전체 세출</span>
+      <div class="kpi${on('total')}"><span class="k">전체 세출</span>
         <span class="v">${money(comp.total)}</span>
         <span class="u">${LF.UNITS[u].label} · ${state.year}년</span></div>`;
 
-    // 도넛 — 안쪽은 분야, 바깥은 부문. 같은 순서라 방사 방향이 맞는다.
-    const innerLabels = focus.map(cd => `${fieldNm(cd)}(${cd})`).concat(['그 외 분야']);
-    const innerValues = totals.concat([others]);
-    const innerColors = [C.f080[1], C.f090[1]].slice(0, focus.length).concat([C.other]);
-    const oL = [], oV = [], oC = [];
-    focus.forEach((fcd, fi) => {
-      const pal = fi === 0 ? C.f080 : C.f090;
+    const hv = state.unit === 'percent' ? 'billion' : state.unit;
+    const cd2 = arr => arr.map(v => LF.formatNumber(v / LF.UNITS[hv].divisor, hv));
+    const hover = `%{label}<br>%{percent} · %{customdata} ${LF.UNITS[hv].label}<extra></extra>`;
+
+    // 부문 조각. 기준이 무엇이든 이 목록이 도넛·막대·표의 재료다.
+    const slices = [];
+    shownFields.forEach(fcd => {
+      const pal = palOf(fcd);
       (M._partsOfField.get(fcd) || [])
         .map(p => ({ p, v: (comp.byPart.get(p.cd) || { bdg: 0 }).bdg }))
         .filter(x => x.v > 0).sort((a, b) => b.v - a.v)
-        .forEach((x, i) => { oL.push(`${x.p.nm}(${x.p.cd})`); oV.push(x.v); oC.push(pal[i % pal.length]); });
+        .forEach((x, i) => slices.push({
+          label: `${x.p.nm}(${x.p.cd})`, v: x.v, color: pal[i % pal.length] }));
     });
-    oL.push('그 외 분야'); oV.push(others); oC.push(C.other);
-    const hv = state.unit === 'percent' ? 'billion' : state.unit;
-    const cd2 = arr => arr.map(v => LF.formatNumber(v / LF.UNITS[hv].divisor, hv));
 
-    Plotly.react($('#chartDonut'), [
-      { type: 'pie', labels: oL, values: oV, hole: .62, domain: { x: [0, 1], y: [0, 1] },
-        marker: { colors: oC, line: { color: css('--surface'), width: 1.5 } },
-        textinfo: 'none', sort: false, direction: 'clockwise', customdata: cd2(oV),
-        hovertemplate: `%{label}<br>%{percent} · %{customdata} ${LF.UNITS[hv].label}<extra></extra>`, name: '부문' },
-      { type: 'pie', labels: innerLabels, values: innerValues, hole: .34,
-        domain: { x: [.185, .815], y: [.185, .815] },
-        marker: { colors: innerColors, line: { color: css('--surface'), width: 1.5 } },
-        textinfo: 'percent', textposition: 'inside', insidetextorientation: 'horizontal',
-        insidetextfont: { size: 12, color: C.inside }, automargin: true,
-        sort: false, direction: 'clockwise', customdata: cd2(innerValues),
-        hovertemplate: `%{label}<br>%{percent} · %{customdata} ${LF.UNITS[hv].label}<extra></extra>`, name: '분야' },
-    ], baseLayout({ showlegend: true, legend: { orientation: 'h', y: -.05, font: { size: 10.5 } },
-                    margin: { l: 8, r: 8, t: 8, b: 8 } }), CFG);
+    if (base === 'total') {
+      // 전체 세출을 볼 때만 두 겹이다. 안쪽은 분야, 바깥은 부문.
+      // 같은 순서로 그려 방사 방향이 맞는다.
+      const innerLabels = focus.map(cd => `${fieldNm(cd)}(${cd})`).concat(['그 외 분야']);
+      const innerValues = totals.concat([others]);
+      const innerColors = [C.f080[1], C.f090[1]].slice(0, focus.length).concat([C.other]);
+      const oL = slices.map(s => s.label).concat(['그 외 분야']);
+      const oV = slices.map(s => s.v).concat([others]);
+      const oC = slices.map(s => s.color).concat([C.other]);
+      Plotly.react($('#chartDonut'), [
+        { type: 'pie', labels: oL, values: oV, hole: .62, domain: { x: [0, 1], y: [0, 1] },
+          marker: { colors: oC, line: { color: css('--surface'), width: 1.5 } },
+          textinfo: 'none', sort: false, direction: 'clockwise', customdata: cd2(oV),
+          hovertemplate: hover, name: '부문' },
+        { type: 'pie', labels: innerLabels, values: innerValues, hole: .34,
+          domain: { x: [.185, .815], y: [.185, .815] },
+          marker: { colors: innerColors, line: { color: css('--surface'), width: 1.5 } },
+          textinfo: 'percent', textposition: 'inside', insidetextorientation: 'horizontal',
+          insidetextfont: { size: 12, color: C.inside }, automargin: true,
+          sort: false, direction: 'clockwise', customdata: cd2(innerValues),
+          hovertemplate: hover, name: '분야' },
+      ], baseLayout({ showlegend: true, legend: { orientation: 'h', y: -.05, font: { size: 10.5 } },
+                      margin: { l: 8, r: 8, t: 8, b: 8 } }), CFG);
+      $('#donutNote').textContent =
+        '안쪽 고리는 전체 세출을 사회복지·보건·그 외로 나눈 것, 바깥 고리는 사회복지와 보건을 부문별로 나눈 것입니다.';
+    } else {
+      // 기준이 분야면 그 분야만 부문으로 쪼갠다. 한 겹이면 충분하고,
+      // 조각 비율이 곧 '기준 대비 %' 라 읽기도 쉽다.
+      const L = slices.map(s => s.label), V = slices.map(s => s.v), K = slices.map(s => s.color);
+      Plotly.react($('#chartDonut'), [
+        { type: 'pie', labels: L, values: V, hole: .5,
+          marker: { colors: K, line: { color: css('--surface'), width: 1.5 } },
+          textinfo: 'percent', textposition: 'inside', insidetextorientation: 'horizontal',
+          insidetextfont: { size: 11, color: C.inside }, automargin: true,
+          sort: false, direction: 'clockwise', customdata: cd2(V),
+          hovertemplate: hover, name: '부문' },
+      ], baseLayout({ showlegend: true, legend: { orientation: 'h', y: -.05, font: { size: 10.5 } },
+                      margin: { l: 8, r: 8, t: 8, b: 8 } }), CFG);
+      $('#donutNote').textContent =
+        `${baseLabel}을(를) 부문별로 나눈 것입니다. 조각의 비율이 곧 ${baseLabel} 대비 비중입니다.`;
+    }
 
     // 막대 — 크기 순위
     const rows = [];
-    focus.forEach(fcd => (M._partsOfField.get(fcd) || []).forEach(p => {
+    shownFields.forEach(fcd => (M._partsOfField.get(fcd) || []).forEach(p => {
       const v = comp.byPart.get(p.cd); if (!v || !v.bdg) return;
       const nbiz = biz ? LF.bizCount(biz, { years: [state.year], parts: [p.cd], accounts: state.accounts }) : null;
       rows.push({ cd: p.cd, nm: p.nm, fld: fcd, bdg: v.bdg, nbiz,
-                  share: pct(v.bdg),
+                  share: bpct(v.bdg), totalShare: pct(v.bdg),
                   parentShare: (comp.byField.get(fcd) || 0) ? v.bdg / comp.byField.get(fcd) * 100 : null });
     }));
     rows.sort((a, b) => b.bdg - a.bdg);
     const isPct = state.unit === 'percent';
-    const xs = rows.map(r => isPct ? r.share : r.bdg / LF.UNITS[state.unit].divisor);
+    const xs = rows.map(r => isPct ? (r.share || 0) : r.bdg / LF.UNITS[state.unit].divisor);
     const labels = rows.map(r => `${r.nm}(${r.cd})`);
 
     Plotly.react($('#chartParts'), [{
       type: 'bar', orientation: 'h', x: xs.slice().reverse(), y: labels.slice().reverse(),
-      marker: { color: rows.slice().reverse().map(r => r.fld === focus[0] ? C.f080[1] : C.f090[1]) },
+      marker: { color: rows.slice().reverse().map(r => palOf(r.fld)[1]) },
       text: rows.slice().reverse().map(r => r.nbiz != null ? `사업 ${r.nbiz.toLocaleString('ko-KR')}개` : ''),
       textposition: 'outside', textfont: { size: 10.5, color: css('--ink-3') }, cliponaxis: false,
       customdata: rows.slice().reverse().map(r => r.cd),
@@ -530,7 +657,7 @@
     }], baseLayout({
       hovermode: 'closest', showlegend: false, margin: { l: 150, r: 80, t: 8, b: 40 },
       xaxis: Object.assign(baseLayout().xaxis, {
-        title: { text: isPct ? '전체 세출 대비 %' : unitLabel(), font: { size: 11.5 } },
+        title: { text: isPct ? `${baseLabel} 대비 %` : unitLabel(), font: { size: 11.5 } },
         separatethousands: true, exponentformat: 'none', automargin: true }),
       yaxis: { automargin: true, tickfont: { size: 11 } },
     }), CFG);
@@ -543,38 +670,64 @@
       state.qPart = cd; state.qTerms = ''; syncControls(); selectTab('search');
     });
 
-    $('#compHint').textContent =
-      `${state.year}년 전체 세출 ${LF.formatNumber(comp.total / 1e8, 'billion')} 억원 중 `
-      + `사회복지·보건이 ${pct(focusSum).toFixed(1)}%`;
+    $('#compHint').textContent = base === 'total'
+      ? `${state.year}년 전체 세출 ${LF.formatNumber(comp.total / 1e8, 'billion')} 억원 중 `
+        + `사회복지·보건이 ${pct(focusSum).toFixed(1)}%`
+      : `${state.year}년 ${baseLabel} ${LF.formatNumber(baseTotal / 1e8, 'billion')} 억원`
+        + ` (전체 세출의 ${pct(baseTotal).toFixed(1)}%) 을 부문별로 나눕니다`;
 
-    // 표 — 분야별로 나누고 소계·합계를 함께
-    const head = ['분야', '부문', '코드', `예산(${isPct ? '%' : unitLabel()})`,
-                  '전체 세출 대비 %', '상위 분야 대비 %', '사업 수'];
+    // 표 — 분야별로 나누고 소계·합계를 함께.
+    // % 열은 기준에 따라 달라진다. 기준이 분야면 '기준 대비' 와
+    // '상위 분야 대비' 가 같은 값이라 한 번만 싣는다.
+    const pctCols = [];
+    if (base !== 'total') pctCols.push({ nm: `${baseLabel} 대비 %`, f: r => r.share });
+    pctCols.push({ nm: '전체 세출 대비 %', f: r => r.totalShare });
+    if (!isField) pctCols.push({ nm: '상위 분야 대비 %', f: r => r.parentShare });
+    const num = v => (v == null ? '—' : v.toFixed(2));
+
+    const head = ['분야', '부문', '코드', `예산(${isPct ? '%' : unitLabel()})`]
+      .concat(pctCols.map(c => c.nm), ['사업 수']);
     const trows = [];
-    focus.forEach(fcd => {
+    shownFields.forEach(fcd => {
       rows.filter(r => r.fld === fcd).forEach(r => trows.push({
         cells: [fieldNm(fcd), r.nm, r.cd,
-                LF.formatNumber(isPct ? r.share : r.bdg / LF.UNITS[state.unit].divisor, state.unit),
-                r.share.toFixed(2), r.parentShare != null ? r.parentShare.toFixed(2) : '—',
-                r.nbiz != null ? r.nbiz.toLocaleString('ko-KR') : '—'] }));
+                LF.formatNumber(isPct ? (r.share || 0) : r.bdg / LF.UNITS[state.unit].divisor, state.unit)]
+          .concat(pctCols.map(c => num(c.f(r))),
+                  [r.nbiz != null ? r.nbiz.toLocaleString('ko-KR') : '—']) }));
       const t = comp.byField.get(fcd) || 0;
       trows.push({ sub: true, cells: [`${fieldNm(fcd)} 소계`, '', fcd,
-        LF.formatNumber(isPct ? pct(t) : t / LF.UNITS[state.unit].divisor, state.unit),
-        pct(t).toFixed(2), '100.00', ''] });
+        LF.formatNumber(isPct ? (bpct(t) || 0) : t / LF.UNITS[state.unit].divisor, state.unit)]
+        .concat(pctCols.map(c => num(c.f({ share: bpct(t), totalShare: pct(t), parentShare: 100 }))),
+                ['']) });
     });
-    trows.push({ sub: true, cells: ['두 분야 합계', '', '',
-      LF.formatNumber(isPct ? pct(focusSum) : focusSum / LF.UNITS[state.unit].divisor, state.unit),
-      pct(focusSum).toFixed(2), '', ''] });
+    if (shownFields.length > 1) {
+      trows.push({ sub: true, cells: [`${focusNm()} 합계`, '', '',
+        LF.formatNumber(isPct ? (bpct(focusSum) || 0) : focusSum / LF.UNITS[state.unit].divisor, state.unit)]
+        .concat(pctCols.map(c => num(c.f({ share: bpct(focusSum), totalShare: pct(focusSum), parentShare: null }))),
+                ['']) });
+    }
     drawTable($('#tblComp'), head, trows, [0, 1, 2]);
-    lastRender.comp = { head, rows: trows.map(r => r.cells), comp, partRows: rows, focusSum };
+    $('#compTableNote').textContent = shownFields.length > 1
+      ? `사회복지와 보건을 나누어 싣고, 각 분야 소계와 두 분야 합계를 함께 표시합니다. `
+        + `기준은 ${baseLabel}입니다.`
+      : `${baseLabel}의 부문과 소계입니다. 소계는 정의상 100%입니다.`;
+    lastRender.comp = { head, rows: trows.map(r => r.cells), comp, partRows: rows,
+                        focusSum, base, baseLabel, baseTotal };
   }
 
+
   // ── ③ 지도 ──────────────────────────────────────────────
+  /** 지도가 보고 있는 것 — 분자와 분모를 한 곳에서 만든다. */
+  function mapSelection() {
+    const it = itemSel(state.mapItem);
+    return selection({ fields: it.fields, parts: it.parts,
+                       denFields: baseFields(state.mapBase) });
+  }
+
   function mapValues() {
     // 지도에 쓸 (자치단체 → 값). 시도 하나 또는 전국.
     const year = state.mapYear || state.year;
-    const fields = state.mapField === 'both' ? M.focus_fields : [state.mapField];
-    const sel = selection({ fields, parts: state.mapPart ? [state.mapPart] : null });
+    const sel = mapSelection();
     const scope = state.mapScope;
     const sidos = scope === 'nation' ? M.sido.map(s => s.cd) : [state.sido];
     const values = new Map(), labels = new Map(), rows = [];
@@ -653,7 +806,10 @@
         parts.push(`${info.drawn - info.matched}곳은 자료가 없어 회색입니다.`);
       if (wholeSido)
         parts.push('세종·제주처럼 기초자치단체가 없는 곳은 시도 전체(본청) 값입니다.');
-      if (isPct) parts.push(`비중의 분모는 ${state.mapPart ? '상위 분야' : '전체 세출'}입니다.`);
+      // 분모를 고르게 했으니 무엇으로 나눴는지도 반드시 적는다.
+      // 금액으로 볼 때는 분모가 쓰이지 않으므로 그 사실도 적는다.
+      if (isPct) parts.push(`${baseNm(state.mapBase)}을(를) 분모로 한 비중입니다.`);
+      else parts.push(`금액이므로 기준(${baseNm(state.mapBase)})은 %로 볼 때만 적용됩니다.`);
       if (state.mapLabel !== 'none') {
         if (info.gated) parts.push('확대하면 지역명이 나타납니다.');
         else if (info.tooSmall)
@@ -686,10 +842,13 @@
     syncZoom(info);
 
     const sidoNm = M._sidoByCd.get(state.sido)?.nm || '';
-    const fieldNmTxt = state.mapField === 'both' ? '사회복지+보건'
-      : `${fieldNm(state.mapField)}(${state.mapField})`;
+    // 제목은 고른 그대로 읽히게 — '전체 세출 중 기초생활보장'.
+    // 금액일 때는 분모가 계산에 안 들어가므로 '중' 을 붙이지 않는다.
+    const what = isPct
+      ? `${baseNm(state.mapBase)} 중 ${itemNm(state.mapBase, state.mapItem)}`
+      : itemNm(state.mapBase, state.mapItem);
     $('#mapTitle').textContent =
-      `${state.mapScope === 'nation' ? '전국' : sidoNm} · ${year}년 · ${fieldNmTxt}`;
+      `${state.mapScope === 'nation' ? '전국' : sidoNm} · ${year}년 · ${what}`;
     note.textContent = noteFor(info);
 
     rows.sort((a, b) => b.v - a.v);
@@ -839,7 +998,10 @@
       compareLabels: state.compare.map(cd => { const x = M._regionByCd.get(cd); return x ? x.nm : cd; }),
       yearLabel: `${M.years[0].y}–${M.years[M.years.length - 1].y}`,
       scopeLabel: scopeLabel(), accountLabel: accountLabel(), unitLabel: unitLabel(),
-      denominatorLabel: state.unit === 'percent' ? LF.denominatorLabel(M, selection()) : null,
+      // 분모는 화면마다 다르다. 지도는 사용자가 직접 고른 기준을 쓰므로
+      // 엑셀에도 그 화면의 분모가 그대로 실려야 인용해도 맞다.
+      denominatorLabel: state.unit === 'percent'
+        ? LF.denominatorLabel(M, state.tab === 'map' ? mapSelection() : selection()) : null,
       source: M.source.api, basis: M.source.basis, builtAt: M.built_at,
       completeness: M.years.map(y => ({ y: y.y, rows: y.rows,
         total: y.rows != null && y.missing != null ? y.rows + y.missing : null, rate: y.completeness })),
@@ -981,8 +1143,17 @@
     $('#selYear').addEventListener('change', e => { state.year = +e.target.value; writeHash(); render(); });
 
     $('#mapYear').addEventListener('change', e => { state.mapYear = +e.target.value; renderMap(); });
-    $('#mapField').addEventListener('change', e => { state.mapField = e.target.value; writeHash(); renderMap(); });
-    $('#mapPart').addEventListener('change', e => { state.mapPart = e.target.value; renderMap(); });
+    $('#compBase').addEventListener('change', e => {
+      state.compBase = e.target.value; writeHash(); renderComp();
+    });
+    $('#mapBase').addEventListener('change', e => {
+      // 기준이 바뀌면 항목 목록도 바뀐다. 전에 고른 항목이 새 기준에
+      // 없으면 그 기준의 첫 항목으로 떨어진다.
+      state.mapBase = e.target.value; fillMapItems(); writeHash(); renderMap();
+    });
+    $('#mapItem').addEventListener('change', e => {
+      state.mapItem = e.target.value; writeHash(); renderMap();
+    });
     $('#mapLabelMode').addEventListener('click', e => {
       const b = e.target.closest('button[data-lbl]'); if (!b) return;
       state.mapLabel = b.dataset.lbl; syncControls(); writeHash(); renderMap();

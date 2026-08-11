@@ -188,8 +188,17 @@
       regions: null, measure: sel.measure || 'bdg',
     });
 
-    // 분모 — 부문 선택이면 상위 분야, 분야 선택이면 전 분야
-    const denFields = partLevel ? numFields : null;
+    // 분모.
+    //
+    // 기본은 '한 단계 위' 다 — 부문을 골랐으면 상위 분야, 분야를 골랐으면
+    // 전 분야. 대부분의 화면이 이 규칙으로 충분하다.
+    //
+    // sel.denFields 를 주면 그것을 분모로 쓴다. '전체 세출 중 081' 처럼
+    // 한 단계를 건너뛰어 보고 싶을 때가 있고, 그건 다른 질문이지
+    // 잘못된 계산이 아니다. null 을 주면 전 분야(전체 세출)다.
+    const denFields = 'denFields' in sel
+      ? (sel.denFields && sel.denFields.length ? idxSet(agg._fIdx, sel.denFields) : null)
+      : (partLevel ? numFields : null);
     const den = sumByRegionYear(agg.tot, {
       accounts, fields: denFields, parts: null, regions: null, measure: 'bdg',
     });
@@ -410,13 +419,19 @@
 
   /** 퍼센트 모드에서 분모가 무엇인지 화면에 적기 위한 문구. */
   LF.denominatorLabel = function (manifest, sel) {
-    if (!sel.parts || !sel.parts.length) return '전체 세출 대비';
-    const parents = [...new Set(sel.parts.map(p => sel.partParent[p]))];
-    const names = parents.map(f => {
+    const nm = f => {
       const fld = manifest._fieldByCd.get(f);
       return fld ? `${fld.nm}(${f})` : f;
-    });
-    return `${names.join(' · ')} 대비`;
+    };
+    // 분모를 지정했으면 그것을 그대로 적는다. 화면에 적히는 문구와
+    // 실제 나눗셈이 어긋나면 인용한 숫자가 틀리게 된다.
+    if ('denFields' in sel) {
+      return (sel.denFields && sel.denFields.length)
+        ? `${sel.denFields.map(nm).join('+')} 대비` : '전체 세출 대비';
+    }
+    if (!sel.parts || !sel.parts.length) return '전체 세출 대비';
+    const parents = [...new Set(sel.parts.map(p => sel.partParent[p]))];
+    return `${parents.map(nm).join(' · ')} 대비`;
   };
 
   LF.axisLabel = function (unit, manifest, sel) {
