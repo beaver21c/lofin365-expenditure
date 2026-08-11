@@ -51,6 +51,26 @@ def sgg_key(name: str) -> str:
     return re.sub(r"\s+", "", str(name))
 
 
+def sgg_candidates(name: str, sido_short: str) -> list[str]:
+    """
+    지방재정365의 시군구명을 경계 데이터의 이름과 맞추기 위한 후보들.
+
+    지방재정365는 시도명을 앞에 붙여 쓴다 — '부산사상구', '경기수원시'.
+    경계 데이터는 '사상구', '수원시' 다. 그대로 비교하면 하나도 맞지 않아
+    지도가 통째로 비어 버린다. 접두를 떼어 낸 형태도 후보에 넣는다.
+
+    반대 방향도 넣어 둔다. 어느 쪽 표기가 올지 확정할 수 없고,
+    후보를 늘려도 같은 시도 안에서만 비교하므로 잘못 붙을 위험이 작다.
+    """
+    n = sgg_key(name)
+    out = [n]
+    if sido_short and n.startswith(sido_short) and len(n) > len(sido_short):
+        out.append(n[len(sido_short):])
+    if sido_short and not n.startswith(sido_short):
+        out.append(sido_short + n)
+    return out
+
+
 def load_boundaries() -> dict:
     ct = json.loads((GEO_SRC / "code_table.json").read_text(encoding="utf-8"))
     return ct
@@ -123,12 +143,12 @@ def build(regions: list[dict], sido_list: list[dict], out_dir: Path) -> dict:
             continue
         geo_sido = sm["geo"]
         cand = units.get(geo_sido, [])
-        key = sgg_key(r["nm"])
-        hit = next((u for u in cand if sgg_key(u["nm"]) == key), None)
+        keys = set(sgg_candidates(r["nm"], sm["key"]))
+        hit = next((u for u in cand if sgg_key(u["nm"]) in keys), None)
         if hit is None:
             unmatched.append({
                 "cd": r["cd"], "nm": r["nm"], "sido": sm["nm"],
-                "why": "이름 미매칭",
+                "why": "이름 미매칭", "tried": sorted(keys),
             })
             continue
         region_map[r["cd"]] = {"sido": geo_sido, "sgg": hit["sgg"], "nm": r["nm"]}

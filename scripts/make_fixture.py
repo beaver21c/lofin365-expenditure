@@ -84,7 +84,10 @@ def make_frame(year: int, rng: random.Random) -> pd.DataFrame:
         units = [(sido_cd, f"{sido_nm}본청", True)]
         for i, sgg_nm in enumerate(SIDO_NAMES[sido_cd]):
             cd = f"{sido_cd[:2]}{i+1:02d}000"
-            units.append((cd, sgg_nm, False))
+            # 지방재정365는 시도명을 앞에 붙여 쓴다 — '부산사상구'.
+            # 경계 데이터('사상구')와 다르므로 합성 데이터도 실제 표기를 따라야
+            # 이름 결합을 제대로 검증할 수 있다.
+            units.append((cd, f"{sido_nm}{sgg_nm}", False))
 
         for laf_cd, laf_nm, head in units:
             scale = (6 if head else 1) * rng.uniform(0.4, 2.6)
