@@ -29,6 +29,7 @@ from datetime import datetime, timezone, timedelta
 
 import pandas as pd
 
+import build_geo
 from lofin_common import (
     FOCUS_FIELDS, SourceRepoError, setup_logging, log,
     list_source_assets, year_asset_map, download_asset, fetch_progress,
@@ -440,6 +441,22 @@ def main() -> int:
     if dropped:
         warnings.append(f"★ 집계 과정에서 예산 {dropped:,}원이 누락되었습니다. 수치를 신뢰할 수 없습니다.")
 
+    sido_list = [
+        {"cd": cd, "nm": str(g["_sido_nm"].iloc[0]), "n_region": int((~g["head"]).sum())}
+        for cd, g in reg_all.groupby("_sido")
+    ]
+    region_list = [
+        {"cd": str(r["laf_cd"]), "nm": str(r["laf_hg_nm"]), "sido": str(r["_sido"]),
+         "type": str(r["type"]), "head": bool(r["head"]),
+         "years": sorted(region_years.get(str(r["laf_cd"]), []))}
+        for _, r in reg_all.iterrows()
+    ]
+
+    # ── 지도 크로스워크. 경계 데이터와 코드 체계가 달라 이름으로 잇는다.
+    log.info("지도 크로스워크")
+    geo = build_geo.build(region_list, sido_list, data_dir / "geo")
+    warnings.extend(geo["warnings"])
+
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "built_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST"),
@@ -460,25 +477,15 @@ def main() -> int:
             }
             for y in targets
         ],
-        "sido": [
-            {
-                "cd": cd,
-                "nm": str(g["_sido_nm"].iloc[0]),
-                "n_region": int((~g["head"]).sum()),
-            }
-            for cd, g in reg_all.groupby("_sido")
-        ],
-        "regions": [
-            {
-                "cd": str(r["laf_cd"]),
-                "nm": str(r["laf_hg_nm"]),
-                "sido": str(r["_sido"]),
-                "type": str(r["type"]),
-                "head": bool(r["head"]),
-                "years": sorted(region_years.get(str(r["laf_cd"]), [])),
-            }
-            for _, r in reg_all.iterrows()
-        ],
+        "sido": sido_list,
+        "regions": region_list,
+        "geo": {
+            "available": geo["available"],
+            "match_rate": geo["crosswalk"]["match"]["rate"],
+            "matched": geo["crosswalk"]["match"]["regions_matched"],
+            "total": geo["crosswalk"]["match"]["regions_total"],
+            "source": geo["crosswalk"]["source"],
+        },
         # 코드가 비어 있는 항목에도 이름을 준다. 이름 없이 두면 화면에
         # 빈칸으로 나와 무엇인지 알 수 없다.
         "fields": [

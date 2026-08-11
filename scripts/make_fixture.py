@@ -20,21 +20,41 @@ from datetime import datetime, timezone, timedelta
 import pandas as pd
 
 import aggregate as AG
+import build_geo
 from lofin_common import FOCUS_FIELDS
 
 KST = timezone(timedelta(hours=9))
 SITE = Path("_site")
 YEARS = list(range(2016, 2026))
 
-# 실제 구조를 닮게 — 시도마다 시군구 수를 다르게 두고,
-# 분위 밴드를 못 그리는 경우(세종·제주)도 일부러 포함한다.
-SIDO = [
-    ("4100000", "경기", 31),
-    ("1100000", "서울", 25),
-    ("2600000", "부산", 16),
-    ("5000000", "세종", 0),
-    ("5100000", "제주", 2),
+# 시도 코드와 시군구 이름을 실제 값으로 쓴다. 지도 크로스워크가
+# 이름으로 결합하므로, 가짜 이름을 쓰면 그 경로를 검증할 수 없다.
+# 지방재정365의 시도 코드 체계는 경계 데이터와 다르다(11/26/27… vs 11/21/22…).
+LOFIN_SIDO = [
+    ("1100000", "서울"), ("2600000", "부산"), ("2700000", "대구"),
+    ("2800000", "인천"), ("2900000", "광주"), ("3000000", "대전"),
+    ("3100000", "울산"), ("3200000", "세종"), ("4100000", "경기"),
+    ("4200000", "강원"), ("4300000", "충북"), ("4400000", "충남"),
+    ("4500000", "전북"), ("4600000", "전남"), ("4700000", "경북"),
+    ("4800000", "경남"), ("4900000", "제주"),
 ]
+
+
+def real_units():
+    """경계 데이터에서 실제 시군구 이름을 가져온다."""
+    ct = build_geo.load_boundaries()
+    units = build_geo.geo_units(ct)
+    geo_by_key = {build_geo.sido_key(x["name"]): x["code"] for x in ct["sido"]}
+    out = []
+    for cd, nm in LOFIN_SIDO:
+        g = geo_by_key[build_geo.sido_key(nm)]
+        names = [u["nm"] for u in units[g]]
+        out.append((cd, nm, names))
+    return out
+
+
+SIDO = [(cd, nm, len(names)) for cd, nm, names in real_units()]
+SIDO_NAMES = {cd: names for cd, nm, names in real_units()}
 FIELDS = [
     ("010", "일반공공행정"), ("020", "공공질서및안전"), ("050", "교육"),
     ("060", "문화및관광"), ("070", "환경"), ("080", "사회복지"),
@@ -62,10 +82,9 @@ def make_frame(year: int, rng: random.Random) -> pd.DataFrame:
     for sido_cd, sido_nm, n in SIDO:
         # 본청은 항상 하나
         units = [(sido_cd, f"{sido_nm}본청", True)]
-        for i in range(n):
+        for i, sgg_nm in enumerate(SIDO_NAMES[sido_cd]):
             cd = f"{sido_cd[:2]}{i+1:02d}000"
-            kind = "군" if i % 4 == 3 else ("구" if sido_cd in ("1100000", "2600000") else "시")
-            units.append((cd, f"{sido_nm}{i+1}{kind}", False))
+            units.append((cd, sgg_nm, False))
 
         for laf_cd, laf_nm, head in units:
             scale = (6 if head else 1) * rng.uniform(0.4, 2.6)
@@ -172,6 +191,17 @@ def main() -> int:
         biz_sizes[region_cd] = AG.write_json(
             data / "biz" / f"{region_cd}.json", AG.build_biz_file(region_cd, group))
 
+    sido_list = [{"cd": cd, "nm": str(g["_sido_nm"].iloc[0]),
+                  "n_region": int((~g["head"]).sum())}
+                 for cd, g in reg_all.groupby("_sido")]
+    region_list = [{"cd": str(r["laf_cd"]), "nm": str(r["laf_hg_nm"]),
+                    "sido": str(r["_sido"]), "type": str(r["type"]),
+                    "head": bool(r["head"]),
+                    "years": sorted(region_years.get(str(r["laf_cd"]), []))}
+                   for _, r in reg_all.iterrows()]
+    import logging; logging.basicConfig(level=logging.INFO, format="%(message)s")
+    geo = build_geo.build(region_list, sido_list, data / "geo")
+
     manifest = {
         "schema_version": AG.SCHEMA_VERSION,
         "built_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST"),
@@ -186,14 +216,13 @@ def main() -> int:
                    "completeness": 1.0 if y != 2017 else 0.9971,
                    "missing": 0 if y != 2017 else 1012,
                    "asset_incomplete": False} for y in YEARS],
-        "sido": [{"cd": cd, "nm": str(g["_sido_nm"].iloc[0]),
-                  "n_region": int((~g["head"]).sum())}
-                 for cd, g in reg_all.groupby("_sido")],
-        "regions": [{"cd": str(r["laf_cd"]), "nm": str(r["laf_hg_nm"]),
-                     "sido": str(r["_sido"]), "type": str(r["type"]),
-                     "head": bool(r["head"]),
-                     "years": sorted(region_years.get(str(r["laf_cd"]), []))}
-                    for _, r in reg_all.iterrows()],
+        "sido": sido_list,
+        "regions": region_list,
+        "geo": {"available": geo["available"],
+                "match_rate": geo["crosswalk"]["match"]["rate"],
+                "matched": geo["crosswalk"]["match"]["regions_matched"],
+                "total": geo["crosswalk"]["match"]["regions_total"],
+                "source": geo["crosswalk"]["source"]},
         "fields": [{"cd": cd, "nm": str(row[1])} for cd, row in sorted(names_acc["fields"].items())],
         "parts": [{"cd": cd, "nm": str(row[1]), "fld": str(row[2])}
                   for cd, row in sorted(names_acc["parts"].items())],
