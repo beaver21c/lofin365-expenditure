@@ -53,6 +53,12 @@ def real_units():
     return out
 
 
+# 단층제 — 지방재정365에 기초자치단체가 없는 시도.
+# 제주에 제주시·서귀포시가 있지만 행정시라 예산이 도로 편성된다.
+# 실측에서도 이 두 곳의 기초 수는 0이었다(전체 243 = 본청 17 + 기초 226).
+SINGLE_TIER = {"세종", "제주"}
+
+
 def _apply_history(pairs):
     """
     실제 데이터에는 행정구역 이력이 남아 있다. 경계 데이터는 최신인데
@@ -68,6 +74,8 @@ def _apply_history(pairs):
             names = [n for n in names if n != "군위군"]
         if nm == "경북":                       # 편입 전에는 경북 소속
             names = names + ["군위군"]
+        if nm in SINGLE_TIER:                  # 본청 하나뿐
+            names = []
         out.append((cd, nm, names))
     return out
 

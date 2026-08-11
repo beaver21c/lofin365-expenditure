@@ -253,11 +253,38 @@ main { min-width: 0; }
 .kpis .u { font-size: 11.5px; color: var(--ink-2); }
 
 /* 지도 */
+.mapwrap { position: relative; }
 .mapbox { padding: .5rem; }
 .mapbox svg.choropleth { display: block; width: 100%; height: auto; }
 .mapbox path.rg { transition: opacity .12s; }
 .mapbox path.rg.has { cursor: pointer; }
 .mapbox path.rg.has:hover { opacity: .72; }
+/* 확대한 뒤에는 끌어서 옮기는 것이 먼저다 — 커서로 그걸 알린다 */
+.mapbox.zoomed { cursor: grab; touch-action: none; }
+.mapbox.panning { cursor: grabbing; }
+.mapbox.panning path.rg.has:hover { opacity: 1; }
+
+.mapzoom {
+  position: absolute; top: .75rem; right: .75rem; z-index: 2;
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px;
+  padding: 2px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+}
+.mapzoom button {
+  width: 28px; height: 26px; padding: 0; cursor: pointer;
+  font: inherit; font-size: 13px; line-height: 1;
+  color: var(--ink); background: transparent;
+  border: 0; border-radius: 3px;
+}
+.mapzoom button:hover:not(:disabled) { background: var(--surface-2); }
+.mapzoom button:disabled { opacity: .35; cursor: default; }
+.mapzoom button:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
+.mapzoom #mapZoomLevel {
+  padding: 1px 0; text-align: center; font-size: 10px; font-weight: 650;
+  font-variant-numeric: tabular-nums; color: var(--ink-3);
+  border-top: 1px solid var(--rule-2);
+}
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem;
           padding: .5rem .9rem; border-top: 1px solid var(--rule-2); font-size: 11px;
           color: var(--ink-2); }

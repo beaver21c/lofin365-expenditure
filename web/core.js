@@ -64,6 +64,15 @@
       if (!m._regionsOfSido.has(r.sido)) m._regionsOfSido.set(r.sido, []);
       m._regionsOfSido.get(r.sido).push(r);
     });
+    // 단층제 — 기초자치단체가 하나도 없는 시도의 본청.
+    // 세종·제주가 그렇다(제주시·서귀포시는 행정시라 예산이 도로 잡힌다).
+    // 그런 본청은 청사가 아니라 시도 전역을 뜻하므로, 지도에도 올리고
+    // 비교 대상으로도 고를 수 있어야 한다.
+    m._singleTier = new Set();
+    m._regionsOfSido.forEach((rs, sido) => {
+      if (rs.some(r => !r.head)) return;
+      rs.filter(r => r.head).forEach(r => m._singleTier.add(r.cd));
+    });
     cache.manifest = m;
     return m;
   };

@@ -158,7 +158,7 @@
     <section class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" hidden>
       <header class="ph">
         <h2>지역 비교 지도</h2>
-        <p>시군구를 고르면 그 시도 안에서, 시도만 고르면 전국에서 어디가 많고 적은지 한눈에 봅니다. 지도를 누르면 그 지역이 선택됩니다.</p>
+        <p>시군구를 고르면 그 시도 안에서, 시도만 고르면 전국에서 어디가 많고 적은지 한눈에 봅니다. 지도를 누르면 그 지역이 선택되고, ＋－ 버튼이나 마우스 휠로 확대한 뒤 끌어서 옮길 수 있습니다.</p>
       </header>
 
       <div class="bar">
@@ -190,7 +190,15 @@
         <figcaption><h3 id="mapTitle">지도</h3><div class="acts">
           <button class="btn" data-export-x="map">엑셀</button>
           <button class="btn" data-export-i="map">이미지</button></div></figcaption>
-        <div id="mapBox" class="mapbox"></div>
+        <div class="mapwrap">
+          <div id="mapBox" class="mapbox"></div>
+          <div class="mapzoom" role="group" aria-label="지도 확대">
+            <button type="button" id="mapZoomIn" title="확대 (지도 위에서 휠을 굴려도 됩니다)" aria-label="확대">＋</button>
+            <button type="button" id="mapZoomOut" title="축소" aria-label="축소">－</button>
+            <button type="button" id="mapZoomReset" title="처음 배율로" aria-label="처음 배율로">⤾</button>
+            <span id="mapZoomLevel">100%</span>
+          </div>
+        </div>
         <div class="legend" id="mapLegend"></div>
         <p class="note" id="mapNote"></p>
       </figure>
@@ -262,7 +270,7 @@
       <dl class="gl">
         <dt>추이</dt><dd>연도별 예산 변화를 선으로 봅니다. 같은 시도 시군구들의 <strong>1~3분위 음영</strong>과 중위값을 함께 그려 내 위치를 가늠할 수 있고, 다른 지역을 최대 3곳까지 겹쳐 볼 수 있습니다.</dd>
         <dt>구성</dt><dd>한 해를 골라 전체 세출 중 사회복지·보건의 비중과 부문별 크기를 봅니다. 두 분야를 <strong>나누어 보여주고 합계도 함께</strong> 싣습니다.</dd>
-        <dt>지도</dt><dd>어디가 많고 적은지 색으로 봅니다. 시군구를 골랐으면 그 시도 안에서, 시도만 골랐으면 전국에서 비교합니다. 지도를 누르면 그 지역이 선택됩니다.</dd>
+        <dt>지도</dt><dd>어디가 많고 적은지 색으로 봅니다. 시군구를 골랐으면 그 시도 안에서, 시도만 골랐으면 전국에서 비교합니다. 지도를 누르면 그 지역이 선택되고, <strong>＋－ 버튼이나 마우스 휠로 확대</strong>한 뒤 끌어서 옮길 수 있습니다.</dd>
         <dt>사업 검색</dt><dd>세부사업명에 특정 단어가 들어간 사업의 수와 예산을 찾습니다. 띄어쓰기는 무시하므로 "노인 일자리"와 "노인일자리"가 같게 검색됩니다. 제외어도 쓸 수 있습니다.</dd>
       </dl>
 
@@ -283,6 +291,21 @@
       <p><strong>광역 본청은 분포에서 뺍니다.</strong> 도 본청은 예산 성격이 시군구와 달라
         같이 넣으면 분포가 왜곡됩니다. 시군구가 5곳 미만인 시도(세종·제주)는
         분위수가 의미를 갖지 못해 띠를 그리지 않고 사유를 적습니다.</p>
+
+      <h3>지도가 나누는 단위</h3>
+      <p>지도의 한 면은 <strong>예산이 편성되는 자치단체 하나</strong>입니다. 경계 데이터와
+        일치하지 않는 곳이 있어 다음과 같이 맞춥니다.</p>
+      <ul>
+        <li><strong>일반구는 시로 합칩니다.</strong> 용인시 처인·기흥·수지구는 예산이 용인시
+          하나로 잡히므로 셋을 묶어 한 면·한 값으로 그립니다. 안쪽 구 경계선은 지웁니다.</li>
+        <li><strong>세종·제주는 시도 전체가 한 면입니다.</strong> 기초자치단체가 없어
+          (제주시·서귀포시는 행정시라 예산이 도로 편성됩니다) 본청 값이 곧 그 지역의 값입니다.</li>
+        <li><strong>다른 시도의 본청은 지도에 없습니다.</strong> 도 본청 예산은 시군구와 별개라
+          같은 면에 겹쳐 칠할 수 없습니다. 지도의 합은 그 지역 총액이 아닙니다.</li>
+      </ul>
+      <p>전국 지도는 축소 상태에서 지역명을 띄우지 않습니다. 240여 개 이름이 겹쳐
+        읽히지 않고, 넓은 군 몇 곳만 이름이 붙어 오히려 오해를 부르기 때문입니다.
+        확대해 자리가 생기는 만큼 이름이 차례로 나타납니다.</p>
 
       <h3>내보내기</h3>
       <p>그래프마다 <strong>엑셀</strong>과 <strong>이미지</strong> 버튼이 있습니다.

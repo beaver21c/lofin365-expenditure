@@ -160,8 +160,7 @@
     if (!state.region) {
       const s0 = M.sido[0];
       state.sido = s0.cd;
-      const pool = (M._regionsOfSido.get(s0.cd) || []).filter(r => !r.head);
-      state.region = (pool[0] || M.regions[0]).cd;
+      state.region = defaultRegion(s0.cd);
     }
     const lastY = M.years[M.years.length - 1].y;
     if (!state.year) state.year = lastY;
@@ -210,6 +209,17 @@
     bindEvents();
   }
 
+  /**
+   * 그 시도에서 처음 보여 줄 자치단체.
+   *
+   * 세종·제주는 기초자치단체가 없어 본청뿐이다. 기초만 찾다 못 찾으면
+   * 엉뚱한 시도의 지역이 잡혀, 고른 시도와 화면에 뜬 지역이 어긋난다.
+   */
+  function defaultRegion(sidoCd) {
+    const pool = M._regionsOfSido.get(sidoCd) || [];
+    return (pool.find(r => !r.head) || pool[0] || M.regions[0]).cd;
+  }
+
   function fillRegionSelect() {
     const pool = M._regionsOfSido.get(state.sido) || [];
     const basic = pool.filter(r => !r.head), heads = pool.filter(r => r.head);
@@ -218,8 +228,11 @@
       + heads.map(r => `<option value="${r.cd}">${esc(r.nm)}</option>`).join('') + '</optgroup>';
     $('#selRegion').innerHTML = html;
 
+    // 비교 대상은 기초자치단체가 원칙이다. 다만 세종·제주는 기초가 없어
+    // 본청이 곧 그 지역이므로 여기서 빼면 아예 비교할 수 없게 된다.
     $('#selCompare').innerHTML = '<option value="">＋ 지역 추가</option>' + M.sido.map(s => {
-      const rs = (M._regionsOfSido.get(s.cd) || []).filter(r => !r.head);
+      const rs = (M._regionsOfSido.get(s.cd) || [])
+        .filter(r => !r.head || M._singleTier.has(r.cd));
       if (!rs.length) return '';
       return `<optgroup label="${esc(s.nm)}">`
         + rs.map(r => `<option value="${r.cd}">${esc(r.nm)}</option>`).join('') + '</optgroup>';
@@ -565,12 +578,14 @@
     const scope = state.mapScope;
     const sidos = scope === 'nation' ? M.sido.map(s => s.cd) : [state.sido];
     const values = new Map(), labels = new Map(), rows = [];
+    const singles = M._singleTier;
+    let wholeSido = 0;
 
     sidos.forEach(sc => {
       const a = aggBySido.get(sc);
       if (!a) return;
       const { num, den } = LF.series(a, sel);
-      (M._regionsOfSido.get(sc) || []).filter(r => !r.head).forEach(r => {
+      (M._regionsOfSido.get(sc) || []).filter(r => !r.head || singles.has(r.cd)).forEach(r => {
         const ri = a._rIdx.get(r.cd); if (ri === undefined) return;
         const nm = num.get(ri), v = nm ? nm.get(year) : undefined;
         if (v === undefined) return;
@@ -585,12 +600,26 @@
         // 보고 있을 때는 접두가 군더더기라 뗀다. 전국에서는 동명 지자체
         // (남구는 네 곳에 있다)를 가려야 하므로 그대로 둔다.
         const sn = M._sidoByCd.get(sc)?.nm || '';
-        labels.set(r.cd, (scope === 'sido' && sn && r.nm.startsWith(sn) && r.nm.length > sn.length)
-          ? r.nm.slice(sn.length) : r.nm);
-        rows.push({ cd: r.cd, nm: r.nm, sido: M._sidoByCd.get(sc)?.nm || '', v: out });
+        // 단층제는 '제주본청' 이 아니라 '제주' 로 부른다 — 지도에서
+        // 그 면이 뜻하는 것은 청사가 아니라 도 전체다.
+        const single = singles.has(r.cd);
+        if (single) wholeSido++;
+        const shown = single ? (sn || r.nm) : r.nm;
+        labels.set(r.cd, (scope === 'sido' && !single && sn
+                          && r.nm.startsWith(sn) && r.nm.length > sn.length)
+          ? r.nm.slice(sn.length) : shown);
+        rows.push({ cd: r.cd, nm: shown, sido: sn, v: out });
       });
     });
-    return { values, labels, rows, year, sel };
+    return { values, labels, rows, year, sel, wholeSido };
+  }
+
+  function syncZoom(info) {
+    const z = info && info.zoom ? info.zoom : 1;
+    $('#mapZoomLevel').textContent = `${Math.round(z * 100)}%`;
+    $('#mapZoomIn').disabled = !(info && info.canZoomIn);
+    $('#mapZoomOut').disabled = !(info && info.canZoomOut);
+    $('#mapZoomReset').disabled = !(info && info.canZoomOut);
   }
 
   async function renderMap() {
@@ -601,6 +630,7 @@
       note.textContent = M.geo && M.geo.match_rate != null
         ? `경계 매칭률이 ${(M.geo.match_rate * 100).toFixed(1)}% 로 낮아 지도를 제공하지 않습니다.`
         : '지도 데이터를 불러오지 못했습니다.';
+      syncZoom(null);
       drawTable($('#tblMap'), [], []); return;
     }
     // 전국을 보려면 모든 시도 집계가 있어야 한다
@@ -610,10 +640,32 @@
       setStatus('ready', `${M.years.length}개 연도 · ${M.regions.length}개 자치단체`);
     }
 
-    const { values, labels, rows, year } = mapValues();
+    const { values, labels, rows, year, wholeSido } = mapValues();
     const isPct = state.unit === 'percent';
     const uLabel = isPct ? '%' : unitLabel();
     const sidoGeo = geo.cross.sido ? geo.cross.sido[state.sido] : null;
+
+    // 지도를 다시 그리지 않고 배율만 바뀌는 일이 잦다(휠·끌기). 그때마다
+    // 생략된 이름 수가 달라지므로 설명문은 함수로 두고 다시 만든다.
+    const noteFor = info => {
+      const parts = [`${info.matched}곳에 값이 있습니다.`];
+      if (info.drawn > info.matched)
+        parts.push(`${info.drawn - info.matched}곳은 자료가 없어 회색입니다.`);
+      if (wholeSido)
+        parts.push('세종·제주처럼 기초자치단체가 없는 곳은 시도 전체(본청) 값입니다.');
+      if (isPct) parts.push(`비중의 분모는 ${state.mapPart ? '상위 분야' : '전체 세출'}입니다.`);
+      if (state.mapLabel !== 'none') {
+        if (info.gated) parts.push('확대하면 지역명이 나타납니다.');
+        else if (info.tooSmall)
+          parts.push(`${info.tooSmall}곳은 면이 좁아 이름을 생략했습니다`
+            + '(확대하거나 마우스를 올리면 보입니다).');
+      }
+      // 구간이 하나뿐이면(면이 하나거나 값이 모두 같으면) 나눈 적이 없다.
+      // 그때도 '분위로 나눕니다' 라고 적으면 없는 구간을 있다고 말하는 셈이다.
+      if (info.ramp && info.ramp.length > 1)
+        parts.push('색 구간은 표시된 지역들의 분위로 나눕니다.');
+      return parts.join(' ');
+    };
 
     const info = LFMap.render(box, {
       topo: geo.topo, crosswalk: geo.cross,
@@ -628,23 +680,17 @@
         syncControls(); writeHash();
         loadRegionData().then(() => render());
       },
+      onView: st => { syncZoom(st); note.textContent = noteFor(st); },
     });
     LFMap.legend($('#mapLegend'), info, uLabel);
+    syncZoom(info);
 
     const sidoNm = M._sidoByCd.get(state.sido)?.nm || '';
     const fieldNmTxt = state.mapField === 'both' ? '사회복지+보건'
       : `${fieldNm(state.mapField)}(${state.mapField})`;
     $('#mapTitle').textContent =
       `${state.mapScope === 'nation' ? '전국' : sidoNm} · ${year}년 · ${fieldNmTxt}`;
-
-    const parts = [];
-    parts.push(`${info.matched}곳에 값이 있습니다.`);
-    if (info.drawn > info.matched) parts.push(`${info.drawn - info.matched}곳은 자료가 없어 회색입니다.`);
-    if (isPct) parts.push(`비중의 분모는 ${state.mapPart ? '상위 분야' : '전체 세출'}입니다.`);
-    if (state.mapLabel !== 'none' && info.tooSmall)
-      parts.push(`${info.tooSmall}곳은 면이 좁아 이름을 생략했습니다(마우스를 올리면 보입니다).`);
-    parts.push('색 구간은 표시된 지역들의 분위로 나눕니다.');
-    note.textContent = parts.join(' ');
+    note.textContent = noteFor(info);
 
     rows.sort((a, b) => b.v - a.v);
     drawTable($('#tblMap'),
@@ -886,8 +932,7 @@
   function bindEvents() {
     $('#selSido').addEventListener('change', async e => {
       state.sido = e.target.value;
-      const pool = (M._regionsOfSido.get(state.sido) || []).filter(r => !r.head);
-      state.region = (pool[0] || M.regions[0]).cd;
+      state.region = defaultRegion(state.sido);
       syncControls(); writeHash(); await loadRegionData(); render();
     });
     $('#selRegion').addEventListener('change', async e => {
@@ -942,6 +987,9 @@
       const b = e.target.closest('button[data-lbl]'); if (!b) return;
       state.mapLabel = b.dataset.lbl; syncControls(); writeHash(); renderMap();
     });
+    $('#mapZoomIn').addEventListener('click', () => LFMap.zoomBy($('#mapBox'), 1.6));
+    $('#mapZoomOut').addEventListener('click', () => LFMap.zoomBy($('#mapBox'), 1 / 1.6));
+    $('#mapZoomReset').addEventListener('click', () => LFMap.resetView($('#mapBox')));
     $('#mapScope').addEventListener('click', e => {
       const b = e.target.closest('button[data-scope]'); if (!b) return;
       state.mapScope = b.dataset.scope; syncControls(); writeHash(); renderMap();

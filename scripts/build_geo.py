@@ -15,6 +15,10 @@
 시군구는 한 겹 더 있다. 경계 데이터는 일반구까지 나뉘어 있어
 '수원시장안구'처럼 4개로 쪼개져 있지만 지방재정365의 자치단체는 '수원시'
 하나다. code_table 의 merged_cities 로 먼저 합친 뒤 이름을 맞춘다.
+
+반대 방향의 어긋남도 있다. 세종·제주는 지방재정365에 기초자치단체가 아예
+없어서(제주시·서귀포시는 예산이 따로 잡히지 않는 행정시다) 경계만 남는다.
+이런 시도는 본청을 시도 경계 전체에 잇는다.
 """
 
 from __future__ import annotations
@@ -186,8 +190,42 @@ def build(regions: list[dict], sido_list: list[dict], out_dir: Path) -> dict:
         region_map[r["cd"]] = {"sido": geo_sido, "sgg": hit["sgg"], "nm": r["nm"]}
         used.setdefault(geo_sido, set()).update(hit["sgg"])
 
-    rate = len(region_map) / len(basic) if basic else 0.0
-    log.info("  시군구 크로스워크 %d/%d (%.2f%%)", len(region_map), len(basic), rate * 100)
+    matched_basic = len(region_map)
+    rate = matched_basic / len(basic) if basic else 0.0
+    log.info("  시군구 크로스워크 %d/%d (%.2f%%)", matched_basic, len(basic), rate * 100)
+
+    # ── 단층제 시도 — 기초자치단체가 없는 곳
+    #
+    # 세종과 제주는 지방재정365에 기초자치단체가 없다. 제주에 제주시·서귀포시가
+    # 있지만 행정시라 예산이 따로 잡히지 않고 도 하나로 편성된다.
+    # 그대로 두면 지도에서 두 곳이 영원히 회색으로 남는다.
+    #
+    # 그래서 본청을 그 시도의 경계 전체에 잇는다. 값 하나가 도 전역을 덮는다.
+    # 다른 시도의 본청은 기초와 별개 예산이라 지도에 올리지 않는다 —
+    # 기초 위에 겹쳐 칠할 면이 없기 때문이다.
+    # 기초가 '하나도 없는' 시도만 단층제로 본다. 기초가 있는데 이름을
+    # 못 맞춘 경우까지 본청으로 덮으면, 결합 실패가 지도에서 감쪽같이
+    # 사라져 버린다. 실패는 실패로 남겨 미매칭 경고에 잡히게 한다.
+    single_tier: list[str] = []
+    have_basic = {r["sido"] for r in basic}
+    for s in sido_list:
+        if s["cd"] in have_basic:
+            continue
+        head = next((r for r in regions
+                     if r.get("head") and r["sido"] == s["cd"]), None)
+        sm = sido_map.get(s["cd"])
+        if not head or not sm:
+            continue
+        geo_sido = sm["geo"]
+        all_sgg = [c for u in units.get(geo_sido, []) for c in u["sgg"]]
+        if not all_sgg:
+            continue
+        region_map[head["cd"]] = {"sido": geo_sido, "sgg": all_sgg,
+                                  "nm": s["nm"], "single": True}
+        used.setdefault(geo_sido, set()).update(all_sgg)
+        single_tier.append(head["cd"])
+        log.info("  단층제 %s — 본청 %s 을 %d개 경계 전체에 연결",
+                 s["nm"], head["cd"], len(all_sgg))
 
     # 경계에는 있는데 재정 데이터에 없는 곳 — 지도에서 회색으로 남는다
     orphan = []
@@ -233,9 +271,10 @@ def build(regions: list[dict], sido_list: list[dict], out_dir: Path) -> dict:
         "sido": {cd: v["geo"] for cd, v in sido_map.items()},
         "sido_nm": {v["geo"]: v["nm"] for v in sido_map.values()},
         "region": region_map,
+        "single_tier": single_tier,
         "match": {
             "regions_total": len(basic),
-            "regions_matched": len(region_map),
+            "regions_matched": matched_basic,
             "rate": round(rate, 4),
             "unmatched": unmatched,
             "boundary_without_data": orphan,
