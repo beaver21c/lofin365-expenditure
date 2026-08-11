@@ -103,7 +103,17 @@ def make_frame(year: int, rng: random.Random) -> pd.DataFrame:
                                 "ep_amt": int(amt * rng.uniform(0.75, 0.99)),
                             })
     df = pd.DataFrame(rows)
+    # 실제 원자료에는 부문·회계 코드가 빈 행이 섞여 있다. 그 경로가
+    # 화면까지 무사히 흘러가는지 확인해야 하므로 일부러 넣는다.
+    if len(df) > 200:
+        blanks = df.sample(n=max(len(df) // 200, 1), random_state=7).index
+        df.loc[blanks, "ane_part_cd"] = None
+        df.loc[blanks, "part_nm"] = None
     df.attrs["coerce_failed"] = 0
+    df.attrs["missing_codes"] = {"ane_part_cd": int(df["ane_part_cd"].isna().sum())}
+    # read_year_csv 가 하는 정규화를 그대로 적용한다
+    for c in ("ane_part_cd", "part_nm"):
+        df[c] = df[c].astype("string").fillna("").astype(object)
     return df
 
 

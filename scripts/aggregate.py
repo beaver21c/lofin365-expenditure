@@ -32,7 +32,7 @@ import pandas as pd
 from lofin_common import (
     FOCUS_FIELDS, SourceRepoError, setup_logging, log,
     list_source_assets, year_asset_map, download_asset, fetch_progress,
-    read_year_csv,
+    read_year_csv, uniq_str,
 )
 
 KST = timezone(timedelta(hours=9))
@@ -120,8 +120,24 @@ def aggregate_year(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     stats["focus_rows"] = len(focus)
     stats["names"] = names
     stats["regions"] = regions
+    stats["missing_codes"] = dict(df.attrs.get("missing_codes", {}))
+
+    # 집계 전후 금액이 맞는지 확인한다. 결측 키가 있으면 groupby 가 그 행을
+    # 통째로 버려 예산이 조용히 사라진다. 코드에서 결측을 빈 문자열로
+    # 못 박아 두었으므로 0이어야 하지만, 틀리면 반드시 드러나야 한다.
+    stats["bdg_total"] = int(df["bdg_cash_amt"].sum())
+    stats["bdg_grouped"] = int(tot["bdg"].sum())
+    stats["bdg_dropped"] = stats["bdg_total"] - stats["bdg_grouped"]
 
     return tot, det, biz, stats
+
+
+def label(cd: str, nm) -> str:
+    """코드가 비었거나 이름이 없는 항목의 표시 이름."""
+    text = "" if nm is None else str(nm).strip()
+    if text and text.lower() != "nan":
+        return text
+    return "(코드 없음)" if not str(cd).strip() else f"({cd})"
 
 
 def region_type(name: str) -> str:
@@ -147,7 +163,15 @@ def col(df: pd.DataFrame, name: str, idx: dict | None = None) -> list:
     s = df[name]
     if idx is None:
         return [int(v) for v in s]
-    return [idx[v] for v in s.astype(str)]
+    out = []
+    for v in s.astype("string").fillna("").astype(object):
+        key = str(v)
+        if key not in idx:
+            # 사전과 데이터가 어긋난 것이다. 조용히 넘기면 화면에서
+            # 엉뚱한 항목으로 표시되므로 여기서 멈춘다.
+            raise KeyError(f"{name}: 사전에 없는 코드 {key!r}")
+        out.append(idx[key])
+    return out
 
 
 def write_json(path: Path, obj: object) -> int:
@@ -165,10 +189,10 @@ def build_sido_file(sido_cd: str, tot: pd.DataFrame, det: pd.DataFrame,
     행 객체 대신 컬럼별 배열로 저장한다. 같은 값이 길게 반복되는 구조라
     이 형태가 훨씬 작고, Pages 의 gzip 전송에서도 유리하다.
     """
-    r_idx = {v: i for i, v in enumerate(regions["laf_cd"].astype(str))}
-    fields = sorted(set(tot["fld_cd"].astype(str)) | set(det["fld_cd"].astype(str)))
-    parts = sorted(set(det["ane_part_cd"].astype(str)))
-    accts = sorted(set(tot["acnt_dv_cd"].astype(str)) | set(det["acnt_dv_cd"].astype(str)))
+    r_idx = {v: i for i, v in enumerate(uniq_str(regions["laf_cd"]))}
+    fields = sorted(set(uniq_str(tot["fld_cd"])) | set(uniq_str(det["fld_cd"])))
+    parts = uniq_str(det["ane_part_cd"])
+    accts = sorted(set(uniq_str(tot["acnt_dv_cd"])) | set(uniq_str(det["acnt_dv_cd"])))
     f_idx = {v: i for i, v in enumerate(fields)}
     p_idx = {v: i for i, v in enumerate(parts)}
     a_idx = {v: i for i, v in enumerate(accts)}
@@ -176,7 +200,7 @@ def build_sido_file(sido_cd: str, tot: pd.DataFrame, det: pd.DataFrame,
     out = {
         "schema": "agg/1",
         "sido": sido_cd,
-        "regions": list(regions["laf_cd"].astype(str)),
+        "regions": uniq_str(regions["laf_cd"]),
         "fields": fields,
         "parts": parts,
         "accounts": accts,
@@ -217,10 +241,10 @@ def build_biz_file(region_cd: str, biz: pd.DataFrame) -> dict:
     공백 제거 사본은 저장하지 않는다. 사전이 작아서 브라우저가 읽을 때
     만드는 편이 낫고, 원본과 어긋날 여지도 없앤다.
     """
-    names = sorted(biz["dbiz_nm"].astype(str).unique())
-    codes = sorted(biz["dbiz_cd"].astype(str).unique())
-    parts = sorted(biz["ane_part_cd"].astype(str).unique())
-    accts = sorted(biz["acnt_dv_cd"].astype(str).unique())
+    names = uniq_str(biz["dbiz_nm"])
+    codes = uniq_str(biz["dbiz_cd"])
+    parts = uniq_str(biz["ane_part_cd"])
+    accts = uniq_str(biz["acnt_dv_cd"])
     n_idx = {v: i for i, v in enumerate(names)}
     c_idx = {v: i for i, v in enumerate(codes)}
     p_idx = {v: i for i, v in enumerate(parts)}
@@ -309,7 +333,14 @@ def main() -> int:
             "identity_max_diff": stats.get("identity_max_diff"),
             "coerce_failed": stats.get("coerce_failed", 0),
             "incomplete_asset": meta["incomplete"],
+            "missing_codes": stats.get("missing_codes", {}),
+            "bdg_dropped": stats.get("bdg_dropped", 0),
         }
+        if stats.get("bdg_dropped"):
+            log.error("  ★ %d년 집계에서 예산 %d원이 사라졌습니다 — 결측 키 확인 필요",
+                      year, stats["bdg_dropped"])
+        if stats.get("missing_codes"):
+            log.warning("  코드 결측: %s", stats["missing_codes"])
         log.info("  총 %d행 → 전분야집계 %d행 / 080·090 %d행 / 세부사업 %d행",
                  stats["rows"], len(tot), len(det), len(biz))
 
@@ -396,6 +427,19 @@ def main() -> int:
         if c["missing"] and y in year_stats:
             warnings.append(f"{y}년 원자료가 {c['missing']:,}건 누락되었습니다 (수집률 {c['rate']:.2%}).")
 
+    # 코드 결측 — 화면에 드러내야 한다. 부문 코드가 빈 행은 '(코드 없음)'
+    # 항목으로 집계에 남으므로 값이 사라지지는 않지만, 그 사실은 알려야 한다.
+    code_missing: dict[str, int] = {}
+    for v in year_stats.values():
+        for col_name, n in (v.get("missing_codes") or {}).items():
+            code_missing[col_name] = code_missing.get(col_name, 0) + n
+    if code_missing:
+        detail = ", ".join(f"{k} {n:,}건" for k, n in sorted(code_missing.items()))
+        warnings.append(f"코드가 비어 있는 행이 있습니다 ({detail}). '(코드 없음)' 으로 묶여 표시됩니다.")
+    dropped = sum(v.get("bdg_dropped", 0) for v in year_stats.values())
+    if dropped:
+        warnings.append(f"★ 집계 과정에서 예산 {dropped:,}원이 누락되었습니다. 수치를 신뢰할 수 없습니다.")
+
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "built_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST"),
@@ -435,16 +479,18 @@ def main() -> int:
             }
             for _, r in reg_all.iterrows()
         ],
+        # 코드가 비어 있는 항목에도 이름을 준다. 이름 없이 두면 화면에
+        # 빈칸으로 나와 무엇인지 알 수 없다.
         "fields": [
-            {"cd": cd, "nm": str(row[1])}
+            {"cd": cd, "nm": label(cd, row[1])}
             for cd, row in sorted(names_acc["fields"].items())
         ],
         "parts": [
-            {"cd": cd, "nm": str(row[1]), "fld": str(row[2])}
+            {"cd": cd, "nm": label(cd, row[1]), "fld": str(row[2])}
             for cd, row in sorted(names_acc["parts"].items())
         ],
         "accounts": [
-            {"cd": cd, "nm": str(row[1])}
+            {"cd": cd, "nm": label(cd, row[1])}
             for cd, row in sorted(names_acc["accounts"].items())
         ],
         "files": {"agg": "data/agg/{sido}.json", "biz": "data/biz/{region}.json"},

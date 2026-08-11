@@ -328,15 +328,40 @@ def read_year_csv(path: Path, usecols: Iterable[str] | None = None):
         coerce_failed += int(num.isna().sum() - raw.isna().sum())
         df[c] = num.fillna(0).astype("int64")
 
-    # 코드 컬럼의 앞자리 0 보존. pandas 가 문자열로 읽어도
-    # 원본에 공백이 섞이면 비교가 어긋나므로 정리한다.
+    # 코드 컬럼의 앞자리 0 보존. 원본에 공백이 섞이면 비교가 어긋나므로 정리한다.
+    #
+    # 결측 처리가 중요하다. pandas 3 에서 astype(str) 은 결측을 "nan" 문자열로
+    # 바꾸지 않고 NA 로 남긴다. 그대로 두면 두 가지가 터진다.
+    #   · groupby 가 결측 키를 가진 행을 통째로 버린다 → 예산이 조용히 사라진다
+    #   · 코드 목록을 정렬할 때 float 와 str 을 비교해 죽는다
+    # 앞의 것이 더 위험하다. 빌드는 성공하는데 값만 틀리기 때문이다.
+    # 빈 문자열로 못 박아 어느 쪽도 일어나지 않게 한다.
+    missing_codes: dict[str, int] = {}
     for c in CODE_COLS:
-        if c in df.columns:
-            df[c] = df[c].astype(str).str.strip()
+        if c not in df.columns:
+            continue
+        s = df[c].astype("string")
+        n_missing = int(s.isna().sum())
+        if n_missing:
+            missing_codes[c] = n_missing
+        df[c] = s.fillna("").astype(object).str.strip()
 
     df.attrs["coerce_failed"] = coerce_failed
     df.attrs["columns_present"] = present
+    df.attrs["missing_codes"] = missing_codes
     return df
+
+
+def uniq_str(series) -> list[str]:
+    """
+    코드 목록을 만든다.
+
+    dtype 이 무엇이든 파이썬 문자열로 맞춰 정렬한다. read_year_csv 를 거치면
+    결측이 이미 빈 문자열이지만, 이 함수 자체로도 안전하게 둔다 —
+    정렬 중 죽는 실패는 파이프라인 맨 끝에서야 드러나 되돌리기 비싸다.
+    """
+    vals = series.astype("string").fillna("").astype(object).unique()
+    return sorted(str(v) for v in vals)
 
 
 def field_of_part(part_cd: str) -> str:
