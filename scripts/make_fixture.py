@@ -53,8 +53,28 @@ def real_units():
     return out
 
 
-SIDO = [(cd, nm, len(names)) for cd, nm, names in real_units()]
-SIDO_NAMES = {cd: names for cd, nm, names in real_units()}
+def _apply_history(pairs):
+    """
+    실제 데이터에는 행정구역 이력이 남아 있다. 경계 데이터는 최신인데
+    지방재정365는 각 연도 당시의 이름·소속을 쓰기 때문이다.
+    합성 데이터도 같은 상황을 만들어야 예외 처리 경로를 검증할 수 있다.
+    """
+    out = []
+    for cd, nm, names in pairs:
+        names = list(names)
+        if nm == "인천":                       # 2018 개칭 전 이름
+            names = ["남구" if n == "미추홀구" else n for n in names]
+        if nm == "대구":                       # 2023 편입 전이라 대구에 없음
+            names = [n for n in names if n != "군위군"]
+        if nm == "경북":                       # 편입 전에는 경북 소속
+            names = names + ["군위군"]
+        out.append((cd, nm, names))
+    return out
+
+
+_UNITS = _apply_history(real_units())
+SIDO = [(cd, nm, len(names)) for cd, nm, names in _UNITS]
+SIDO_NAMES = {cd: names for cd, nm, names in _UNITS}
 FIELDS = [
     ("010", "일반공공행정"), ("020", "공공질서및안전"), ("050", "교육"),
     ("060", "문화및관광"), ("070", "환경"), ("080", "사회복지"),
@@ -226,10 +246,17 @@ def main() -> int:
                 "matched": geo["crosswalk"]["match"]["regions_matched"],
                 "total": geo["crosswalk"]["match"]["regions_total"],
                 "source": geo["crosswalk"]["source"]},
-        "fields": [{"cd": cd, "nm": str(row[1])} for cd, row in sorted(names_acc["fields"].items())],
-        "parts": [{"cd": cd, "nm": str(row[1]), "fld": str(row[2])}
-                  for cd, row in sorted(names_acc["parts"].items())],
-        "accounts": [{"cd": cd, "nm": str(row[1])} for cd, row in sorted(names_acc["accounts"].items())],
+        # 실제 파이프라인과 같은 라벨·정렬을 쓴다. 여기서 갈라지면
+        # 합성 데이터로 하는 점검이 실제를 반영하지 못한다.
+        "fields": [{"cd": cd, "nm": AG.label(cd, row[1])}
+                   for cd, row in sorted(names_acc["fields"].items(),
+                                         key=lambda kv: AG.code_sort_key(kv[0]))],
+        "parts": [{"cd": cd, "nm": AG.label(cd, row[1]), "fld": str(row[2])}
+                  for cd, row in sorted(names_acc["parts"].items(),
+                                        key=lambda kv: AG.code_sort_key(kv[0]))],
+        "accounts": [{"cd": cd, "nm": AG.label(cd, row[1])}
+                     for cd, row in sorted(names_acc["accounts"].items(),
+                                           key=lambda kv: AG.code_sort_key(kv[0]))],
         "files": {"agg": "data/agg/{sido}.json", "biz": "data/biz/{region}.json"},
         "sizes": {
             "agg_total_bytes": sum(agg_sizes.values()),

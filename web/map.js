@@ -100,6 +100,50 @@
     ];
   }
 
+  /**
+   * 라벨을 놓을 자리. 가장 큰 고리의 면적 가중 중심을 쓴다.
+   * 오목한 모양에서는 중심이 도형 밖으로 나갈 수 있지만, 시군구는
+   * 대체로 뭉툭해서 이 정도로 충분하다. 함께 돌려주는 폭·높이로
+   * 글자가 들어갈 자리가 있는지 판단한다.
+   */
+  function labelAnchor(rings, proj) {
+    let best = null, bestArea = -1;
+    rings.forEach(r => {
+      if (r.length < 3) return;
+      let a = 0;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        a += r[j][0] * r[i][1] - r[i][0] * r[j][1];
+      }
+      a = Math.abs(a) / 2;
+      if (a > bestArea) { bestArea = a; best = r; }
+    });
+    if (!best) return null;
+
+    let cx = 0, cy = 0, area = 0;
+    for (let i = 0, j = best.length - 1; i < best.length; j = i++) {
+      const f = best[j][0] * best[i][1] - best[i][0] * best[j][1];
+      area += f;
+      cx += (best[j][0] + best[i][0]) * f;
+      cy += (best[j][1] + best[i][1]) * f;
+    }
+    let pt;
+    if (Math.abs(area) < 1e-12) {
+      pt = best[Math.floor(best.length / 2)];
+    } else {
+      area *= 3;
+      pt = [cx / area, cy / area];
+    }
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    best.forEach(p => {
+      const [x, y] = proj(p);
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    });
+    const [px, py] = proj(pt);
+    return { x: px, y: py, w: maxX - minX, h: maxY - minY };
+  }
+
   function ringPath(ring, proj) {
     let d = '';
     for (let i = 0; i < ring.length; i++) {
@@ -123,11 +167,11 @@
     return out;
   }
 
-  function colorOf(value, breaks, ramp) {
-    if (value == null || !isFinite(value)) return null;
+  function rampIndex(value, breaks, ramp) {
+    if (value == null || !isFinite(value)) return -1;
     let i = 0;
     while (i < breaks.length && value >= breaks[i]) i++;
-    return ramp[Math.min(i, ramp.length - 1)];
+    return Math.min(i, ramp.length - 1);
   }
 
   // ── 렌더 ────────────────────────────────────────────────
@@ -182,14 +226,17 @@
       `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" `
       + `aria-label="시군구별 코로플레스 지도" class="choropleth">`,
     ];
-    let drawn = 0, matched = 0;
+    let drawn = 0, matched = 0, labelled = 0, tooSmall = 0;
     let selPath = '';
+    const labels_ = [];
+    const mode = opts.labelMode || 'none';
 
     feats.forEach(f => {
       const sgg = String(f.properties.sgg_cd);
       const laf = sggToLaf.get(sgg);
       const v = laf != null ? values.get(laf) : undefined;
-      const fill = colorOf(v, breaks, ramp) || noData;
+      const ri = rampIndex(v, breaks, ramp);
+      const fill = ri < 0 ? noData : ramp[ri];
       const d = f.rings.map(r => ringPath(r, proj)).join('');
       if (!d) return;
       drawn++;
@@ -205,10 +252,42 @@
       if (isSel) selPath = `<path class="rg selring" d="${d}" fill="none" `
         + `stroke="${selStroke}" stroke-width="2.4" pointer-events="none"></path>`;
       parts.push(el1);
+
+      // 라벨 — 자리가 없으면 그리지 않는다. 겹쳐 놓으면 읽히지도 않고
+      // 지도만 지저분해진다. 몇 곳을 생략했는지는 세어서 알려 준다.
+      if (mode !== 'none' && nm) {
+        const a = labelAnchor(f.rings, proj);
+        if (a) {
+          const short = nm.length > 6 ? nm.slice(0, 5) + '…' : nm;
+          const line2 = (mode === 'both' && v != null)
+            ? v.toLocaleString('ko-KR', { maximumFractionDigits: 1 }) : null;
+          // 진한 면 위에 어두운 글자를 얹으면 읽히지 않는다. 칠해진
+          // 단계에 따라 글자색을 뒤집는다. 밝은 테마의 팔레트는 값이
+          // 클수록 진해지고, 어두운 테마는 반대로 밝아진다.
+          const onDarkFill = ri < 0 ? dark : (dark ? ri <= 2 : ri >= 4);
+          const ink = onDarkFill ? '#F4F8FB' : '#16202E';
+          const halo = onDarkFill ? 'rgba(12,20,28,.72)' : 'rgba(255,255,255,.86)';
+          const fs = 10.5;
+          const need = short.length * fs * 0.98;
+          if (a.w >= need && a.h >= (line2 ? fs * 2.4 : fs * 1.5)) {
+            labelled++;
+            const dy = line2 ? -1 : 3.5;
+            labels_.push(
+              `<text class="lbl" x="${a.x.toFixed(1)}" y="${(a.y + dy).toFixed(1)}"`
+              + ` text-anchor="middle" font-size="${fs}" fill="${ink}"`
+              + ` stroke="${halo}" stroke-width="2.6" paint-order="stroke"`
+              + ` pointer-events="none">${esc(short)}`
+              + (line2 ? `<tspan x="${a.x.toFixed(1)}" dy="${fs + 1.5}"`
+                  + ` font-size="${fs - 0.8}">${esc(line2)}</tspan>` : '')
+              + '</text>');
+          } else tooSmall++;
+        }
+      }
     });
 
-    // 선택 지역 테두리는 맨 위에 다시 그려 다른 면에 가리지 않게 한다
+    // 선택 지역 테두리와 라벨은 맨 위에 그려 다른 면에 가리지 않게 한다
     if (selPath) parts.push(selPath);
+    parts.push(...labels_);
     parts.push('</svg>');
     el.innerHTML = parts.join('');
 
@@ -220,7 +299,7 @@
         });
       });
     }
-    return { drawn, matched, breaks, ramp, noData };
+    return { drawn, matched, labelled, tooSmall, breaks, ramp, noData };
   };
 
   /** 범례. 구간 색과 경계값을 함께 보여준다. */

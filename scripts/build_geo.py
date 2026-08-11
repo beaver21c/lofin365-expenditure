@@ -51,6 +51,24 @@ def sgg_key(name: str) -> str:
     return re.sub(r"\s+", "", str(name))
 
 
+# 행정구역 이력 예외.
+#
+# 경계 데이터는 최신 상태(ver20260401)이고 지방재정365는 각 연도 당시의
+# 이름과 소속을 그대로 쓴다. 그래서 개칭이나 관할 이관이 있었던 곳은
+# 이름만으로는 맞지 않는다.
+#
+# 확인된 것만 적는다. 비슷해 보인다고 자동으로 이어 붙이면 동명 지자체
+# (남구는 부산·대구·광주·울산에 모두 있다)에서 엉뚱한 곳에 붙는다.
+#
+#   (지방재정365 시도, 지방재정365 자치단체명) → (경계 시도코드, 경계 자치단체명)
+HISTORY = {
+    # 2018-07-01 인천 남구 → 미추홀구 개칭. 인천 경계에 '남구'가 없다.
+    ("인천", "인천남구"): ("23", "미추홀구"),
+    # 2023-07-01 군위군이 경상북도에서 대구광역시로 편입. 경북 경계에 없다.
+    ("경북", "경북군위군"): ("22", "군위군"),
+}
+
+
 def sgg_candidates(name: str, sido_short: str) -> list[str]:
     """
     지방재정365의 시군구명을 경계 데이터의 이름과 맞추기 위한 후보들.
@@ -142,6 +160,20 @@ def build(regions: list[dict], sido_list: list[dict], out_dir: Path) -> dict:
             unmatched.append({"cd": r["cd"], "nm": r["nm"], "why": "시도 미매칭"})
             continue
         geo_sido = sm["geo"]
+
+        # 개칭·이관이 확인된 곳은 예외표를 먼저 본다. 이관된 곳은
+        # 경계상의 시도가 달라지므로 찾을 시도 자체를 바꾼다.
+        hist = HISTORY.get((sm["key"], sgg_key(r["nm"])))
+        if hist:
+            geo_sido = hist[0]
+            cand = units.get(geo_sido, [])
+            hit = next((u for u in cand if sgg_key(u["nm"]) == sgg_key(hist[1])), None)
+            if hit:
+                region_map[r["cd"]] = {"sido": geo_sido, "sgg": hit["sgg"], "nm": r["nm"],
+                                       "moved": True}
+                used.setdefault(geo_sido, set()).update(hit["sgg"])
+                continue
+
         cand = units.get(geo_sido, [])
         keys = set(sgg_candidates(r["nm"], sm["key"]))
         hit = next((u for u in cand if sgg_key(u["nm"]) in keys), None)

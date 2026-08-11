@@ -26,7 +26,7 @@
     accounts: [], unit: LF.DEFAULT_UNIT,
     fields: ['080', '090'], part: '', compare: [], band: false,
     year: null, qTerms: '', qExclude: '', qMode: 'all', qPart: '',
-    mapYear: null, mapField: 'both', mapPart: '', mapScope: 'sido',
+    mapYear: null, mapField: 'both', mapPart: '', mapScope: 'sido', mapLabel: 'none',
     theme: 'auto',
   };
 
@@ -115,6 +115,7 @@
     if (state.year) p.set('y', state.year);
     if (state.qTerms) p.set('q', state.qTerms);
     if (state.mapScope !== 'sido') p.set('ms', state.mapScope);
+    if (state.mapLabel !== 'none') p.set('ml', state.mapLabel);
     if (state.mapField !== 'both') p.set('mf', state.mapField);
     history.replaceState(null, '', '#' + p.toString());
   }
@@ -133,6 +134,7 @@
     const y = parseInt(g('y', ''), 10); if (!isNaN(y)) state.year = y;
     state.qTerms = g('q', '');
     state.mapScope = g('ms', 'sido') === 'nation' ? 'nation' : 'sido';
+    state.mapLabel = ['none','name','both'].includes(g('ml','')) ? g('ml') : 'none';
     state.mapField = ['both', '080', '090'].includes(g('mf', '')) ? g('mf') : 'both';
   }
 
@@ -241,6 +243,7 @@
     $('#chkBand').checked = state.band;
     $$('#unitGroup button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.unit === state.unit)));
     $$('#mapScope button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scope === state.mapScope)));
+    $$('#mapLabelMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lbl === state.mapLabel)));
     $$('#fieldChecks input').forEach(i => { i.checked = state.fields.includes(i.value); });
     renderCompareChips(); updateBandHint();
   }
@@ -577,7 +580,13 @@
           if (!d) return;
           out = v / d * 100;
         } else out = v / LF.UNITS[state.unit].divisor;
-        values.set(r.cd, out); labels.set(r.cd, r.nm);
+        values.set(r.cd, out);
+        // 지방재정365는 시도명을 앞에 붙여 쓴다('서울종로구'). 한 시도만
+        // 보고 있을 때는 접두가 군더더기라 뗀다. 전국에서는 동명 지자체
+        // (남구는 네 곳에 있다)를 가려야 하므로 그대로 둔다.
+        const sn = M._sidoByCd.get(sc)?.nm || '';
+        labels.set(r.cd, (scope === 'sido' && sn && r.nm.startsWith(sn) && r.nm.length > sn.length)
+          ? r.nm.slice(sn.length) : r.nm);
         rows.push({ cd: r.cd, nm: r.nm, sido: M._sidoByCd.get(sc)?.nm || '', v: out });
       });
     });
@@ -610,6 +619,7 @@
       topo: geo.topo, crosswalk: geo.cross,
       scope: state.mapScope, sidoGeo,
       values, labels, selected: state.region, unitLabel: uLabel,
+      labelMode: state.mapLabel,
       theme: document.documentElement.getAttribute('data-theme')
         || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
       onPick: cd => {
@@ -631,6 +641,8 @@
     parts.push(`${info.matched}곳에 값이 있습니다.`);
     if (info.drawn > info.matched) parts.push(`${info.drawn - info.matched}곳은 자료가 없어 회색입니다.`);
     if (isPct) parts.push(`비중의 분모는 ${state.mapPart ? '상위 분야' : '전체 세출'}입니다.`);
+    if (state.mapLabel !== 'none' && info.tooSmall)
+      parts.push(`${info.tooSmall}곳은 면이 좁아 이름을 생략했습니다(마우스를 올리면 보입니다).`);
     parts.push('색 구간은 표시된 지역들의 분위로 나눕니다.');
     note.textContent = parts.join(' ');
 
@@ -926,6 +938,10 @@
     $('#mapYear').addEventListener('change', e => { state.mapYear = +e.target.value; renderMap(); });
     $('#mapField').addEventListener('change', e => { state.mapField = e.target.value; writeHash(); renderMap(); });
     $('#mapPart').addEventListener('change', e => { state.mapPart = e.target.value; renderMap(); });
+    $('#mapLabelMode').addEventListener('click', e => {
+      const b = e.target.closest('button[data-lbl]'); if (!b) return;
+      state.mapLabel = b.dataset.lbl; syncControls(); writeHash(); renderMap();
+    });
     $('#mapScope').addEventListener('click', e => {
       const b = e.target.closest('button[data-scope]'); if (!b) return;
       state.mapScope = b.dataset.scope; syncControls(); writeHash(); renderMap();

@@ -170,6 +170,14 @@
         </select></label>
         <label class="fld"><span>부문</span><select id="mapPart"><option value="">전체</option></select></label>
         <div class="fld">
+          <span id="mapLabelLabel">지역명</span>
+          <div class="seg" role="group" aria-labelledby="mapLabelLabel" id="mapLabelMode">
+            <button type="button" data-lbl="none" aria-pressed="true">끄기</button>
+            <button type="button" data-lbl="name" aria-pressed="false">이름</button>
+            <button type="button" data-lbl="both" aria-pressed="false">이름+값</button>
+          </div>
+        </div>
+        <div class="fld">
           <span id="mapScopeLabel">범위</span>
           <div class="seg" role="group" aria-labelledby="mapScopeLabel" id="mapScope">
             <button type="button" data-scope="sido" aria-pressed="true">선택 시도</button>

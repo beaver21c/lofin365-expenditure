@@ -133,6 +133,12 @@ def aggregate_year(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     return tot, det, biz, stats
 
 
+def code_sort_key(cd: str):
+    """코드 정렬용. 빈 코드는 목록 맨 뒤로 보낸다 — 앞에 오면 눈에 걸린다."""
+    c = str(cd).strip()
+    return (1, "") if not c else (0, c)
+
+
 def label(cd: str, nm) -> str:
     """코드가 비었거나 이름이 없는 항목의 표시 이름."""
     text = "" if nm is None else str(nm).strip()
@@ -490,15 +496,15 @@ def main() -> int:
         # 빈칸으로 나와 무엇인지 알 수 없다.
         "fields": [
             {"cd": cd, "nm": label(cd, row[1])}
-            for cd, row in sorted(names_acc["fields"].items())
+            for cd, row in sorted(names_acc["fields"].items(), key=lambda kv: code_sort_key(kv[0]))
         ],
         "parts": [
             {"cd": cd, "nm": label(cd, row[1]), "fld": str(row[2])}
-            for cd, row in sorted(names_acc["parts"].items())
+            for cd, row in sorted(names_acc["parts"].items(), key=lambda kv: code_sort_key(kv[0]))
         ],
         "accounts": [
             {"cd": cd, "nm": label(cd, row[1])}
-            for cd, row in sorted(names_acc["accounts"].items())
+            for cd, row in sorted(names_acc["accounts"].items(), key=lambda kv: code_sort_key(kv[0]))
         ],
         "files": {"agg": "data/agg/{sido}.json", "biz": "data/biz/{region}.json"},
         "sizes": {
