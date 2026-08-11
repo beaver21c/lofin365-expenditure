@@ -80,21 +80,23 @@
   // ── 투영 ────────────────────────────────────────────────
   // 남한은 위도 범위가 좁아 정교한 투영이 필요 없다. 경도에 cos(위도)를
   // 곱해 가로 비율만 바로잡으면 눈에 거슬리지 않는다.
-  function makeProjection(featureList, width, height, pad) {
+  function bounds(featureList) {
     let minX = 180, maxX = -180, minY = 90, maxY = -90;
     featureList.forEach(f => f.rings.forEach(r => r.forEach(([x, y]) => {
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
     })));
-    const midLat = (minY + maxY) / 2;
-    const k = Math.cos(midLat * Math.PI / 180);
-    const w = (maxX - minX) * k, h = maxY - minY;
-    if (!(w > 0 && h > 0)) return null;
-    const s = Math.min((width - pad * 2) / w, (height - pad * 2) / h);
-    const offX = (width - w * s) / 2, offY = (height - h * s) / 2;
+    const k = Math.cos(((minY + maxY) / 2) * Math.PI / 180);
+    return { minX, maxX, minY, maxY, k, w: (maxX - minX) * k, h: maxY - minY };
+  }
+
+  function makeProjection(bb, width, height, pad) {
+    if (!(bb.w > 0 && bb.h > 0)) return null;
+    const s = Math.min((width - pad * 2) / bb.w, (height - pad * 2) / bb.h);
+    const offX = (width - bb.w * s) / 2, offY = (height - bb.h * s) / 2;
     return ([x, y]) => [
-      (x - minX) * k * s + offX,
-      (maxY - y) * s + offY,          // 화면 y는 아래로 증가
+      (x - bb.minX) * bb.k * s + offX,
+      (bb.maxY - y) * s + offY,       // 화면 y는 아래로 증가
     ];
   }
 
@@ -155,9 +157,13 @@
       (v.sgg || []).forEach(s => sggToLaf.set(String(s), laf));
     });
 
+    // 높이는 지역의 실제 가로세로 비에서 낸다. 고정 비율로 두면 서울처럼
+    // 옆으로 넓은 곳에서 위아래 여백만 잔뜩 생긴다.
     const W = Math.max(el.clientWidth || 640, 320);
-    const H = Math.max(Math.round(W * 0.78), 340);
-    const proj = makeProjection(feats, W, H, 12);
+    const bb = bounds(feats);
+    const pad = 12;
+    const H = Math.min(Math.max(Math.round((W - pad * 2) * (bb.h / bb.w) + pad * 2), 260), 720);
+    const proj = makeProjection(bb, W, H, pad);
     if (!proj) { el.innerHTML = ''; return { drawn: 0 }; }
 
     const vals = [];

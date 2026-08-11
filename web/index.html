@@ -4,222 +4,302 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>지방재정365 사회복지·보건 예산 대시보드</title>
-<meta name="description" content="지방자치단체의 사회복지(080)·보건(090) 세출예산을 연도별 추이, 부문 구성, 사업 검색으로 살펴봅니다.">
+<meta name="description" content="지방자치단체의 사회복지(080)·보건(090) 세출예산을 연도별 추이, 부문 구성, 지도, 사업 검색으로 살펴봅니다.">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>📊</text></svg>">
 </head>
 <body>
 
-<header class="topbar">
-  <div class="brand">
-    <h1>지방재정365 사회복지·보건 예산</h1>
-    <p class="sub">시도·시군구별 세출예산 추이와 구성</p>
-  </div>
-  <div class="status" id="status" role="status" aria-live="polite">
-    <span class="dot" id="statusDot"></span><span id="statusText">데이터를 불러오는 중…</span>
-  </div>
-</header>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
 
 <!-- 데이터가 아직 빌드되지 않았을 때 -->
 <section class="empty" id="emptyState" hidden>
   <h2>데이터가 아직 생성되지 않았습니다</h2>
-  <p>대시보드 화면은 준비되어 있지만, 표시할 집계 데이터가 없습니다.
+  <p>화면은 준비되어 있지만 표시할 집계 데이터가 없습니다.
      저장소에서 <code>2. 대시보드 빌드 및 배포</code> 워크플로를 한 번 실행하면 채워집니다.</p>
-  <ol>
-    <li><strong>토큰 등록</strong> — 원자료가 비공개 저장소에 있어 읽기 토큰이 필요합니다.
-        <code>SOURCE_REPO_TOKEN</code> 을 저장소 Secrets 에 등록합니다.</li>
-    <li><strong>측정</strong> — <code>1. 원자료 측정</code> 을 실행해 데이터 규모를 확인합니다.</li>
-    <li><strong>빌드</strong> — <code>2. 대시보드 빌드 및 배포</code> 를 실행합니다.</li>
-  </ol>
-  <p class="small">자세한 절차는 저장소의 <code>docs/SETUP.md</code> 에 있습니다.</p>
+  <p class="small">자세한 절차는 <code>docs/SETUP.md</code> 에 있습니다.</p>
   <p class="small err" id="emptyDetail"></p>
 </section>
 
-<main id="app" hidden>
+<div class="shell" id="app" hidden>
 
-  <!-- 공통 선택 -->
-  <section class="controls" aria-label="조회 조건">
-    <div class="ctl">
-      <label for="selSido">시도</label>
-      <select id="selSido"></select>
+  <!-- ─────────── 좌측 ─────────── -->
+  <aside class="side">
+    <div class="brand">
+      <h1>지방재정365<br><span>사회복지·보건 예산</span></h1>
     </div>
-    <div class="ctl">
-      <label for="selRegion">시군구</label>
-      <select id="selRegion"></select>
-    </div>
-    <div class="ctl">
-      <label for="selAccount">회계 범위</label>
-      <select id="selAccount"></select>
-    </div>
-    <div class="ctl grow">
-      <label id="unitLabel">단위</label>
-      <div class="segmented" role="radiogroup" aria-labelledby="unitLabel" id="unitGroup"></div>
-    </div>
-  </section>
 
-  <!-- 탭 -->
-  <nav class="tabs" role="tablist" aria-label="화면 전환">
-    <button role="tab" id="tab-trend" aria-controls="panel-trend" aria-selected="true" data-tab="trend">추이</button>
-    <button role="tab" id="tab-comp"  aria-controls="panel-comp"  aria-selected="false" data-tab="comp">구성</button>
-    <button role="tab" id="tab-search" aria-controls="panel-search" aria-selected="false" data-tab="search">사업 검색</button>
-  </nav>
+    <section class="grp">
+      <h2>지역</h2>
+      <label class="fld"><span>시도</span><select id="selSido"></select></label>
+      <label class="fld"><span>시군구</span><select id="selRegion"></select></label>
+    </section>
 
-  <!-- ① 추이 -->
-  <section class="panel" id="panel-trend" role="tabpanel" aria-labelledby="tab-trend">
-    <div class="panelctl">
-      <fieldset class="ctl">
-        <legend>분야</legend>
-        <div class="checks" id="fieldChecks"></div>
-      </fieldset>
-      <div class="ctl">
-        <label for="selPart">부문</label>
-        <select id="selPart"><option value="">전체</option></select>
+    <section class="grp">
+      <h2>분석</h2>
+      <nav class="navtabs" role="tablist" aria-label="화면 전환" id="navTabs"></nav>
+    </section>
+
+    <section class="grp">
+      <h2>표시</h2>
+      <div class="fld">
+        <span id="unitLabel">단위</span>
+        <div class="seg" role="group" aria-labelledby="unitLabel" id="unitGroup"></div>
       </div>
-      <div class="ctl grow">
-        <label for="selCompare">비교지역 <span class="hint">최대 3</span></label>
-        <div class="chips" id="compareChips"></div>
-        <select id="selCompare"><option value="">＋ 지역 추가</option></select>
+      <label class="fld"><span>회계 범위</span><select id="selAccount"></select></label>
+      <div class="fld">
+        <span id="themeLabel">화면</span>
+        <div class="seg" role="group" aria-labelledby="themeLabel" id="themeGroup">
+          <button type="button" data-theme="light" aria-pressed="false">밝게</button>
+          <button type="button" data-theme="dark" aria-pressed="false">어둡게</button>
+          <button type="button" data-theme="auto" aria-pressed="true">시스템</button>
+        </div>
       </div>
-      <div class="ctl">
-        <label class="switch">
-          <input type="checkbox" id="chkBand">
-          <span>시도 분포 표시</span>
-        </label>
-        <p class="hint" id="bandHint"></p>
-      </div>
-    </div>
+    </section>
 
-    <figure class="chart">
-      <figcaption>
-        <h3>연도별 예산 추이</h3>
-        <div class="acts">
+    <section class="grp">
+      <button type="button" class="guidebtn" id="btnGuide">
+        <span aria-hidden="true">📖</span> 사용 설명서
+      </button>
+      <div class="status" id="status" role="status" aria-live="polite">
+        <span class="dot" id="statusDot"></span><span id="statusText">불러오는 중…</span>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ─────────── 본문 ─────────── -->
+  <main id="main">
+  <div class="wrap">
+
+    <!-- ① 추이 -->
+    <section class="panel" id="panel-trend" role="tabpanel" aria-labelledby="tab-trend">
+      <header class="ph">
+        <h2>연도별 추이</h2>
+        <p>선택한 지역의 예산이 해마다 어떻게 달라졌는지 봅니다. 같은 시도 시군구의 분포와 견주고, 다른 지역을 겹쳐 볼 수 있습니다.</p>
+      </header>
+
+      <div class="bar">
+        <fieldset class="fld"><legend>분야</legend><div class="checks" id="fieldChecks"></div></fieldset>
+        <label class="fld"><span>부문</span><select id="selPart"><option value="">전체</option></select></label>
+        <div class="fld grow">
+          <span>비교지역 <em>최대 3</em></span>
+          <div class="chips" id="compareChips"></div>
+          <select id="selCompare"><option value="">＋ 지역 추가</option></select>
+        </div>
+        <div class="fld">
+          <label class="chk"><input type="checkbox" id="chkBand"> 시도 분포 표시</label>
+          <p class="hint" id="bandHint"></p>
+        </div>
+      </div>
+
+      <figure class="card">
+        <figcaption><h3>예산 추이</h3><div class="acts">
           <button class="btn" data-export-x="trend">엑셀</button>
-          <button class="btn" data-export-i="trend">이미지</button>
-        </div>
-      </figcaption>
-      <div id="chartTrend" class="plot"></div>
-      <p class="note" id="trendNote"></p>
-    </figure>
+          <button class="btn" data-export-i="trend">이미지</button></div></figcaption>
+        <div id="chartTrend" class="plot"></div>
+        <p class="note" id="trendNote"></p>
+      </figure>
 
-    <figure class="chart">
-      <figcaption>
-        <h3>사업 수와 사업당 평균예산</h3>
-        <div class="acts">
+      <figure class="card">
+        <figcaption><h3>사업 수와 사업당 평균예산</h3><div class="acts">
           <button class="btn" data-export-x="count">엑셀</button>
-          <button class="btn" data-export-i="count">이미지</button>
-        </div>
-      </figcaption>
-      <div id="chartCount" class="plot"></div>
-      <p class="note">사업 수는 세부사업 코드 기준 고유 개수입니다. 같은 사업이 회계·부문별로 나뉘어 계상된 중복을 제거했습니다. 사업 수 증가가 곧 서비스 확대는 아니므로 사업당 평균예산과 함께 보십시오.</p>
-    </figure>
-
-    <div class="tablewrap">
-      <div class="tablehead">
-        <h3>연도별 수치</h3>
-        <button class="btn" data-export-x="trendTable">엑셀</button>
-      </div>
-      <div class="scroll"><table id="tblTrend"></table></div>
-    </div>
-  </section>
-
-  <!-- ② 구성 -->
-  <section class="panel" id="panel-comp" role="tabpanel" aria-labelledby="tab-comp" hidden>
-    <div class="panelctl">
-      <div class="ctl">
-        <label for="selYear">연도</label>
-        <select id="selYear"></select>
-      </div>
-      <p class="hint grow" id="compHint"></p>
-    </div>
-
-    <div class="split">
-      <figure class="chart">
-        <figcaption>
-          <h3>전체 세출 중 구성</h3>
-          <div class="acts">
-            <button class="btn" data-export-i="donut">이미지</button>
-          </div>
-        </figcaption>
-        <div id="chartDonut" class="plot"></div>
-        <p class="note">안쪽 고리는 전체 세출을 사회복지·보건·그 외로 나눈 것이고, 바깥 고리는 사회복지와 보건을 부문별로 나눈 것입니다.</p>
+          <button class="btn" data-export-i="count">이미지</button></div></figcaption>
+        <div id="chartCount" class="plot"></div>
+        <p class="note">사업 수는 세부사업 코드 기준 고유 개수입니다. 사업 수가 늘었다고 곧 서비스가 넓어진 것은 아니므로 사업당 평균예산과 함께 보십시오.</p>
       </figure>
 
-      <figure class="chart">
-        <figcaption>
-          <h3>부문별 예산과 사업 수</h3>
-          <div class="acts">
-            <button class="btn" data-export-i="parts">이미지</button>
+      <div class="card">
+        <div class="ch"><h3>연도별 수치</h3>
+          <button class="btn" data-export-x="trendTable">엑셀</button></div>
+        <div class="scroll"><table id="tblTrend"></table></div>
+      </div>
+    </section>
+
+    <!-- ② 구성 -->
+    <section class="panel" id="panel-comp" role="tabpanel" aria-labelledby="tab-comp" hidden>
+      <header class="ph">
+        <h2>한 해의 구성</h2>
+        <p>전체 세출 가운데 사회복지와 보건이 각각 얼마이고, 그 안에서 어느 부문이 큰지 봅니다.</p>
+      </header>
+
+      <div class="bar">
+        <label class="fld"><span>연도</span><select id="selYear"></select></label>
+        <p class="hint grow" id="compHint"></p>
+      </div>
+
+      <!-- 080 / 090 / 합계 -->
+      <div class="kpis" id="compKpis"></div>
+
+      <div class="split">
+        <figure class="card">
+          <figcaption><h3>전체 세출 중 구성</h3><div class="acts">
+            <button class="btn" data-export-i="donut">이미지</button></div></figcaption>
+          <div id="chartDonut" class="plot"></div>
+          <p class="note">안쪽 고리는 전체 세출을 사회복지·보건·그 외로 나눈 것, 바깥 고리는 사회복지와 보건을 부문별로 나눈 것입니다.</p>
+        </figure>
+
+        <figure class="card">
+          <figcaption><h3>부문별 예산과 사업 수</h3><div class="acts">
+            <button class="btn" data-export-i="parts">이미지</button></div></figcaption>
+          <div id="chartParts" class="plot"></div>
+          <p class="note">막대를 누르면 그 부문으로 좁힌 사업 검색으로 넘어갑니다.</p>
+        </figure>
+      </div>
+
+      <div class="card">
+        <div class="ch"><h3>부문별 수치</h3>
+          <button class="btn" data-export-x="comp">엑셀</button></div>
+        <div class="scroll"><table id="tblComp"></table></div>
+        <p class="note">사회복지와 보건을 나누어 싣고, 각 분야 소계와 두 분야 합계를 함께 표시합니다.</p>
+      </div>
+    </section>
+
+    <!-- ③ 지도 -->
+    <section class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" hidden>
+      <header class="ph">
+        <h2>지역 비교 지도</h2>
+        <p>시군구를 고르면 그 시도 안에서, 시도만 고르면 전국에서 어디가 많고 적은지 한눈에 봅니다. 지도를 누르면 그 지역이 선택됩니다.</p>
+      </header>
+
+      <div class="bar">
+        <label class="fld"><span>연도</span><select id="mapYear"></select></label>
+        <label class="fld"><span>분야</span><select id="mapField">
+          <option value="both">사회복지+보건 합계</option>
+          <option value="080">사회복지 (080)</option>
+          <option value="090">보건 (090)</option>
+        </select></label>
+        <label class="fld"><span>부문</span><select id="mapPart"><option value="">전체</option></select></label>
+        <div class="fld">
+          <span id="mapScopeLabel">범위</span>
+          <div class="seg" role="group" aria-labelledby="mapScopeLabel" id="mapScope">
+            <button type="button" data-scope="sido" aria-pressed="true">선택 시도</button>
+            <button type="button" data-scope="nation" aria-pressed="false">전국</button>
           </div>
-        </figcaption>
-        <div id="chartParts" class="plot"></div>
-        <p class="note">막대를 누르면 그 부문으로 좁힌 사업 검색으로 이동합니다.</p>
-      </figure>
-    </div>
-
-    <div class="tablewrap">
-      <div class="tablehead">
-        <h3>부문별 수치</h3>
-        <button class="btn" data-export-x="comp">엑셀</button>
-      </div>
-      <div class="scroll"><table id="tblComp"></table></div>
-    </div>
-  </section>
-
-  <!-- ③ 사업 검색 -->
-  <section class="panel" id="panel-search" role="tabpanel" aria-labelledby="tab-search" hidden>
-    <div class="panelctl">
-      <div class="ctl grow">
-        <label for="qTerms">검색어 <span class="hint">공백으로 여러 단어</span></label>
-        <input type="search" id="qTerms" placeholder="예: 노인 일자리" autocomplete="off">
-      </div>
-      <div class="ctl">
-        <label for="qExclude">제외어</label>
-        <input type="search" id="qExclude" placeholder="예: 시설" autocomplete="off">
-      </div>
-      <div class="ctl">
-        <label for="qMode">여러 단어</label>
-        <select id="qMode">
-          <option value="all">모두 포함</option>
-          <option value="any">하나라도 포함</option>
-        </select>
-      </div>
-      <div class="ctl">
-        <label for="qPart">부문</label>
-        <select id="qPart"><option value="">전체</option></select>
-      </div>
-    </div>
-
-    <div class="summary" id="searchSummary"></div>
-
-    <figure class="chart">
-      <figcaption>
-        <h3>검색 결과의 연도별 추이</h3>
-        <div class="acts">
-          <button class="btn" data-export-i="search">이미지</button>
         </div>
-      </figcaption>
-      <div id="chartSearch" class="plot"></div>
-    </figure>
-
-    <div class="tablewrap">
-      <div class="tablehead">
-        <h3>사업 목록</h3>
-        <button class="btn" data-export-x="search">엑셀</button>
       </div>
-      <div class="scroll"><table id="tblSearch"></table></div>
-      <p class="note" id="searchNote"></p>
+
+      <figure class="card">
+        <figcaption><h3 id="mapTitle">지도</h3><div class="acts">
+          <button class="btn" data-export-x="map">엑셀</button>
+          <button class="btn" data-export-i="map">이미지</button></div></figcaption>
+        <div id="mapBox" class="mapbox"></div>
+        <div class="legend" id="mapLegend"></div>
+        <p class="note" id="mapNote"></p>
+      </figure>
+
+      <div class="card">
+        <div class="ch"><h3>지역별 순위</h3></div>
+        <div class="scroll"><table id="tblMap"></table></div>
+      </div>
+    </section>
+
+    <!-- ④ 사업 검색 -->
+    <section class="panel" id="panel-search" role="tabpanel" aria-labelledby="tab-search" hidden>
+      <header class="ph">
+        <h2>사업 검색</h2>
+        <p>선택한 시군구의 사회복지·보건 세부사업 가운데 특정 단어가 들어간 사업의 개수와 예산을 찾습니다.</p>
+      </header>
+
+      <div class="bar">
+        <label class="fld grow"><span>검색어 <em>공백으로 여러 단어</em></span>
+          <input type="search" id="qTerms" placeholder="예: 노인 일자리" autocomplete="off"></label>
+        <label class="fld"><span>제외어</span>
+          <input type="search" id="qExclude" placeholder="예: 시설" autocomplete="off"></label>
+        <label class="fld"><span>여러 단어</span><select id="qMode">
+          <option value="all">모두 포함</option><option value="any">하나라도 포함</option>
+        </select></label>
+        <label class="fld"><span>부문</span><select id="qPart"><option value="">전체</option></select></label>
+      </div>
+
+      <div class="kpis" id="searchSummary"></div>
+
+      <figure class="card">
+        <figcaption><h3>검색 결과의 연도별 추이</h3><div class="acts">
+          <button class="btn" data-export-i="search">이미지</button></div></figcaption>
+        <div id="chartSearch" class="plot"></div>
+      </figure>
+
+      <div class="card">
+        <div class="ch"><h3>사업 목록</h3>
+          <button class="btn" data-export-x="search">엑셀</button></div>
+        <div class="scroll"><table id="tblSearch"></table></div>
+        <p class="note" id="searchNote"></p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <div id="footSource"></div>
+      <div id="footWarn" class="warn"></div>
+    </footer>
+
+  </div>
+  </main>
+</div>
+
+<!-- ─────────── 설명서 ─────────── -->
+<div class="modal" id="guide" hidden>
+  <div class="mbg" data-close></div>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <header>
+      <h2 id="guideTitle">사용 설명서</h2>
+      <button type="button" class="x" data-close aria-label="닫기">✕</button>
+    </header>
+    <div class="mbody">
+
+      <p class="lede">전국 지방자치단체의 <strong>사회복지(080)·보건(090) 세출예산</strong>을
+        연도별 추이, 한 해의 구성, 지도, 사업 검색으로 살펴보는 화면입니다.
+        왼쪽에서 지역을 고르면 모든 화면이 그 지역 기준으로 바뀝니다.</p>
+
+      <h3>네 가지 화면</h3>
+      <dl class="gl">
+        <dt>추이</dt><dd>연도별 예산 변화를 선으로 봅니다. 같은 시도 시군구들의 <strong>1~3분위 음영</strong>과 중위값을 함께 그려 내 위치를 가늠할 수 있고, 다른 지역을 최대 3곳까지 겹쳐 볼 수 있습니다.</dd>
+        <dt>구성</dt><dd>한 해를 골라 전체 세출 중 사회복지·보건의 비중과 부문별 크기를 봅니다. 두 분야를 <strong>나누어 보여주고 합계도 함께</strong> 싣습니다.</dd>
+        <dt>지도</dt><dd>어디가 많고 적은지 색으로 봅니다. 시군구를 골랐으면 그 시도 안에서, 시도만 골랐으면 전국에서 비교합니다. 지도를 누르면 그 지역이 선택됩니다.</dd>
+        <dt>사업 검색</dt><dd>세부사업명에 특정 단어가 들어간 사업의 수와 예산을 찾습니다. 띄어쓰기는 무시하므로 "노인 일자리"와 "노인일자리"가 같게 검색됩니다. 제외어도 쓸 수 있습니다.</dd>
+      </dl>
+
+      <h3>단위와 비중</h3>
+      <p>단위는 <strong>모든 그래프와 표에 함께</strong> 적용됩니다.
+        <code>%</code>를 고르면 <strong>한 단계 위 항목이 분모</strong>가 됩니다.</p>
+      <ul>
+        <li>분야(080·090)를 보고 있으면 → <strong>전체 세출 대비</strong></li>
+        <li>부문(081·08C 등)을 골랐으면 → <strong>그 부문의 상위 분야 대비</strong></li>
+      </ul>
+      <p>화면에 분모가 무엇인지 항상 적히므로, 숫자를 인용할 때 그대로 옮기면 됩니다.</p>
+
+      <h3>분위 음영 읽는 법</h3>
+      <p>회색 띠는 같은 시도 <strong>시군구들의 1분위~3분위 구간</strong>입니다.
+        내 선이 띠 위에 있으면 그 시도에서 상위 4분의 1, 아래면 하위 4분의 1입니다.
+        평균이 아니라 분포를 쓰는 이유는, 수원시와 연천군을 단순평균하면 웬만한 시가
+        전부 평균 이상으로 나와 해석이 무의미해지기 때문입니다.</p>
+      <p><strong>광역 본청은 분포에서 뺍니다.</strong> 도 본청은 예산 성격이 시군구와 달라
+        같이 넣으면 분포가 왜곡됩니다. 시군구가 5곳 미만인 시도(세종·제주)는
+        분위수가 의미를 갖지 못해 띠를 그리지 않고 사유를 적습니다.</p>
+
+      <h3>내보내기</h3>
+      <p>그래프마다 <strong>엑셀</strong>과 <strong>이미지</strong> 버튼이 있습니다.
+        엑셀 첫 장에는 지역·연도·회계범위·단위와 함께 <strong>출처·기준일·수집 완전성</strong>이
+        들어가므로 그대로 인용할 수 있습니다. 비중으로 보고 있으면 분자·분모·비율을 모두 담습니다.</p>
+
+      <h3>읽을 때 조심할 것</h3>
+      <ul>
+        <li><strong>데이터가 없는 해는 선을 끊습니다.</strong> 0으로 채우지 않습니다 — "예산이 0"과 "자료가 없음"은 다릅니다.</li>
+        <li><strong>회계 범위에 따라 총액이 크게 달라집니다.</strong> 기본은 일반회계·특별회계·기금을 모두 합한 값이고, 현재 범위는 화면에 늘 적혀 있습니다.</li>
+        <li><strong>행정구역이 바뀌면 시계열이 끊깁니다.</strong> 통합·분리가 있었던 지역은 이전 연도와 곧바로 이어지지 않습니다.</li>
+        <li><strong>광역과 기초를 단순히 더하면 안 됩니다.</strong> 시도비 보조금이 기초 세출에 다시 잡혀 중복이 생깁니다.</li>
+        <li><strong>명목액입니다.</strong> 10년치 증가에는 물가 상승분이 들어 있습니다.</li>
+      </ul>
+
+      <h3>출처</h3>
+      <p id="guideSource"></p>
+      <p class="small" id="guideGeoSource"></p>
     </div>
-  </section>
-
-</main>
-
-<footer class="foot">
-  <div id="footSource"></div>
-  <div id="footWarn" class="warn"></div>
-</footer>
+  </div>
+</div>
 
 <script src="vendor/plotly-basic.min.js" charset="utf-8"></script>
 <script src="core.js"></script>
+<script src="map.js"></script>
 <script src="export.js"></script>
 <script src="app.js"></script>
 </body>
