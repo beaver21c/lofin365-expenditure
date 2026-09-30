@@ -359,3 +359,78 @@ tbody tr.clickable:hover { background: var(--navy-soft); }
   .gl { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
   .gl dd { margin-bottom: .5rem; }
 }
+
+/* ── AI 해석 ─────────────────────────────────────────────
+   각 탭 맨 아래에 붙는 상자. 화면의 결론이 아니라 곁들임이므로
+   카드 테두리를 점선으로 두어 위쪽 표·그래프와 무게를 구분한다. */
+.card.ai { border-style: dashed; background: var(--surface-2); }
+.card.ai .ch { border-bottom-style: dashed; }
+.aitag { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: .1rem .3rem;
+         margin-left: .35rem; border-radius: 3px; vertical-align: 1px;
+         color: var(--warn); background: var(--surface); border: 1px solid var(--warn); }
+.aibd { padding: .3rem .9rem .9rem; }
+.aibd .note { padding: .35rem 0 .5rem; }
+
+.aibd details { font-size: 11.5px; color: var(--ink-3); }
+.aibd summary { cursor: pointer; padding: .2rem 0; width: max-content; }
+.aibd summary:hover { color: var(--navy); }
+.aibd pre { margin: .4rem 0 0; padding: .6rem .7rem; max-height: 17rem; overflow: auto;
+            background: var(--surface); border: 1px solid var(--rule-2); border-radius: 5px;
+            font-family: var(--mono); font-size: 11px; line-height: 1.55; color: var(--ink-2);
+            white-space: pre-wrap; word-break: break-word; }
+
+.aiout { margin-top: .6rem; padding: .8rem 1rem .9rem; background: var(--surface);
+         border: 1px solid var(--rule); border-left: 3px solid var(--navy);
+         border-radius: var(--radius); font-size: 13.5px; }
+.aiout h4 { font-size: 12.5px; font-weight: 700; color: var(--navy); margin: .9rem 0 .3rem;
+            letter-spacing: .01em; }
+.aiout h4:first-child { margin-top: 0; }
+.aiout p { margin: .3rem 0; color: var(--ink-2); line-height: 1.7; }
+.aiout ul { margin: .3rem 0; padding-left: 1.1rem; color: var(--ink-2); }
+.aiout li { margin: .25rem 0; line-height: 1.65; }
+.aiout strong { color: var(--ink); font-weight: 650; }
+.aifoot { margin-top: .8rem !important; padding-top: .55rem; border-top: 1px solid var(--rule-2);
+          font-size: 11.5px; color: var(--ink-3) !important; line-height: 1.6; }
+
+/* 사이드바 상태 점 — 클래스가 점 자체에 붙는다 */
+.status .dot.ready { background: var(--ok); }
+.status .dot.warn { background: var(--warn); }
+.guidebtn.ghost { background: var(--surface); color: var(--ink-2); font-weight: 600; }
+.guidebtn.ghost:hover { color: var(--navy); }
+
+/* ── 키 설정 상태 기계 ───────────────────────────────────
+   need·busy·fail 이면 입력 폼을, ok 면 한 줄 요약을, off 면 꺼짐 줄을 보인다. */
+.setup { border: 1px solid var(--rule); border-radius: var(--radius); padding: .9rem 1rem;
+         background: var(--surface-2); margin-bottom: .4rem; }
+.setup .s-form, .setup .s-ok, .setup .s-off { display: none; }
+.setup[data-state="need"] .s-form,
+.setup[data-state="busy"] .s-form,
+.setup[data-state="fail"] .s-form { display: block; }
+.setup[data-state="ok"] .s-ok,
+.setup[data-state="off"] .s-off { display: flex; }
+.setup[data-state="fail"] { border-color: var(--err); }
+.setup:not([data-state="fail"]) #kForce,
+.setup:not([data-state="fail"]) #kAuto { display: none; }
+
+.setup .lede { margin: 0 0 .7rem; }
+.s-row { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.s-row + .s-row { margin-top: .5rem; }
+#kIn { flex: 1 1 15rem; max-width: 26rem; font-family: var(--mono); font-size: 12.5px; }
+.s-sub { font-size: 12px; color: var(--ink-3); }
+.kradio { display: flex; gap: .8rem; flex-wrap: wrap; }
+.kradio label { display: inline-flex; align-items: center; gap: .25rem; cursor: pointer; }
+.s-link { margin-left: auto; color: var(--navy); font-size: 12px; font-weight: 600; }
+
+.kstatus { margin: .55rem 0 0; font-size: 12.5px; color: var(--ink-2); }
+.kstatus:empty { display: none; }
+.kstatus.err { color: var(--err); }
+.kstatus.busy { color: var(--ink-3); }
+.s-fix { margin: .45rem 0 0; font-size: 12.5px; line-height: 1.65; color: var(--ink-2); }
+.s-fix a { color: var(--navy); font-weight: 600; }
+
+.s-ok, .s-off { align-items: center; gap: .5rem; flex-wrap: wrap; font-size: 12.5px; }
+.s-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.s-off .s-dot { background: var(--ink-3); }
+.s-why { color: var(--ink-3); font-size: 12px; flex: 1 1 100%; }
+.s-ml { font-size: 12px; font-weight: 700; color: var(--ink-3); }
+#kModel { width: auto; min-width: 13rem; font-size: 12.5px; }

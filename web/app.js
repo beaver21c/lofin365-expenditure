@@ -4,7 +4,7 @@
  * 선택지를 코드에 적지 않는다. 연도·지역·분야·부문·회계는 전부 매니페스트에서
  * 만들어지므로, 수집된 원자료가 늘거나 줄면 화면이 저절로 따라간다.
  */
-(function () {
+(function (global) {
   'use strict';
 
   const $ = s => document.querySelector(s);
@@ -179,6 +179,7 @@
     state.mapYear = lastY;
 
     renderFooter(); fillGuide(); syncControls();
+    if (global.LFAI) global.LFAI.init(aiContext);
     await loadRegionData();
     loadGeo();
     selectTab(state.tab);
@@ -1087,6 +1088,126 @@
     else if (state.tab === 'comp') renderComp();
     else if (state.tab === 'map') renderMap();
     else renderSearch();
+    // 표가 바뀌었으니 앞서 받은 해석은 더 이상 이 화면을 설명하지 않는다.
+    // 지우지 않으면 바뀐 숫자 옆에 옛 해석이 남아 그것이 설명글로 읽힌다.
+    if (global.LFAI) global.LFAI.refresh();
+  }
+
+  // ── AI 해석에 넘길 맥락 ────────────────────────────────
+  //
+  // 다시 집계하지 않는다. `lastRender` 에 담아 둔 **화면에 그려진 그대로의 표**를
+  // 넘긴다. 따로 계산하면 해석이 근거로 삼은 숫자와 사용자가 보는 숫자가 갈라진다.
+  const SOURCE_LINE = () =>
+    `${M.source.api} · ${M.source.basis} · 데이터 생성 ${M.built_at}`;
+
+  /** 표를 모델이 읽기 좋은 평문으로. 열은 탭으로 가른다. */
+  function asTable(head, rows, limit) {
+    const body = (limit && rows.length > limit) ? rows.slice(0, limit) : rows;
+    const out = [head.join('\t'), ...body.map(r => r.map(c => String(c == null ? '' : c)).join('\t'))];
+    if (body.length < rows.length) out.push(`… 이하 ${rows.length - body.length}행 생략`);
+    return out.join('\n');
+  }
+
+  function aiContext(tab) {
+    if (!M || !agg) return null;
+    const region = M._regionByCd.get(state.region);
+    const sido = M._sidoByCd.get(state.sido);
+    const where = `${sido ? sido.nm : ''} ${region ? region.nm : state.region}`.trim();
+    const unit = state.unit === 'percent' ? '%' : unitLabel();
+    const common = [`지역 ${where}`, `회계 범위 ${accountLabel()}`, `표시 단위 ${unit}`];
+
+    if (tab === 'trend') {
+      const t = lastRender.trendTable;
+      if (!t || !t.rows.length) return null;
+      const notes = [];
+      const band = lastRender.trend && lastRender.trend.band;
+      if (band && band.available) {
+        notes.push(`'시도 1분위·중위·3분위'는 ${sido ? sido.nm : ''} 안 시군구 분포입니다. 광역 본청은 모집단에서 뺐습니다.`);
+      } else if (band && band.reason) {
+        notes.push(`시도 분위는 그리지 못했습니다 — ${band.reason}`);
+      }
+      const c = lastRender.count;
+      if (c) {
+        notes.push(`사업 수는 세부사업 코드 기준 고유 개수입니다. 연도별 사업 수 ${c.years.map((y, i) => `${y}년 ${c.counts[i]}개`).join(', ')}`);
+      }
+      if (state.unit === 'percent') notes.push(`비중의 분모는 ${LF.denominatorLabel(M, selection())} 입니다.`);
+      return {
+        heading: '연도별 추이',
+        conditions: [...common, `분야·부문 ${scopeLabel()}`,
+          state.compare.length ? `비교지역 ${state.compare.map(cd => (M._regionByCd.get(cd) || {}).nm || cd).join(', ')}` : '비교지역 없음'],
+        body: asTable(t.head, t.rows),
+        source: SOURCE_LINE(),
+        notes,
+      };
+    }
+
+    if (tab === 'comp') {
+      const c = lastRender.comp;
+      if (!c || !c.rows.length) return null;
+      return {
+        heading: `${state.year}년 구성 — ${c.baseLabel} 을(를) 나눈 것`,
+        conditions: [...common, `연도 ${state.year}`, `기준(분모) ${c.baseLabel}`],
+        body: asTable(c.head, c.rows),
+        source: SOURCE_LINE(),
+        notes: [
+          `'소계' 와 '합계' 행이 표에 함께 들어 있습니다. 항목을 더할 때 겹쳐 세지 마십시오.`,
+          `기준 ${c.baseLabel} 의 금액은 ${LF.formatNumber(c.baseTotal / 1e8, 'billion')} 억원입니다.`,
+        ],
+      };
+    }
+
+    if (tab === 'map') {
+      const m = lastRender.map;
+      if (!m || !m.rows.length) return null;
+      // 228곳을 다 보내면 길기만 하고 읽히지도 않는다. 상·하위와 분포만 준다.
+      const vals = m.rows.map(r => r.v).slice().sort((a, b) => a - b);
+      const q = f => vals[Math.min(vals.length - 1, Math.floor(vals.length * f))];
+      const fmt = v => LF.formatNumber(v, state.unit === 'percent' ? 'percent' : state.unit);
+      const head = ['순위', '시도', '지역', `값(${m.uLabel})`];
+      const line = (r, i) => [String(i + 1), r.sido, r.nm, fmt(r.v)];
+      const top = m.rows.slice(0, 15).map(line);
+      const bottom = m.rows.slice(-5).map((r, i) => line(r, m.rows.length - 5 + i));
+      const body = [
+        asTable(head, top),
+        `… 가운데 ${Math.max(0, m.rows.length - 20)}곳 생략 …`,
+        asTable(head, bottom),
+      ].join('\n');
+      return {
+        heading: `지역 비교 지도 — ${$('#mapTitle').textContent}`,
+        conditions: [`범위 ${state.mapScope === 'nation' ? '전국' : (sido ? sido.nm : '')}`,
+          `연도 ${m.year}`, `기준(분모) ${baseNm(state.mapBase)}`,
+          `항목(분자) ${itemNm(state.mapBase, state.mapItem)}`,
+          `회계 범위 ${accountLabel()}`, `표시 단위 ${m.uLabel}`],
+        body,
+        source: SOURCE_LINE(),
+        notes: [
+          `값이 있는 지역 ${m.rows.length}곳의 분포 — 최소 ${fmt(vals[0])}, 1분위 ${fmt(q(0.25))}, 중위 ${fmt(q(0.5))}, 3분위 ${fmt(q(0.75))}, 최대 ${fmt(vals[vals.length - 1])} (${m.uLabel})`,
+          '위 표는 상위 15곳과 하위 5곳만 추린 것입니다. 가운데 구간은 분포 요약으로만 보십시오.',
+          '일반구가 있는 시는 하나로 묶었고, 세종·제주는 기초자치단체가 없어 시도 전체 값입니다.',
+          '광역 본청은 지도에 없습니다. 이 표의 합은 그 시도의 총액이 아닙니다.',
+        ],
+      };
+    }
+
+    const sr = lastRender.search;
+    if (!sr || !sr.rows.length) return null;
+    const share = sr.base && sr.base.bdgSum ? sr.res.bdgSum / sr.base.bdgSum * 100 : null;
+    return {
+      heading: `사업 검색 — "${state.qTerms || '(검색어 없음)'}"`,
+      conditions: [...common,
+        `검색어 ${state.qTerms || '(없음)'}`,
+        `제외어 ${state.qExclude || '(없음)'}`,
+        `여러 단어 ${state.qMode === 'all' ? '모두 포함' : '하나라도 포함'}`,
+        `부문 ${state.qPart ? ((M._partByCd.get(state.qPart) || {}).nm || state.qPart) : '전체'}`],
+      body: asTable(sr.head, sr.rows, 20),
+      source: SOURCE_LINE(),
+      notes: [
+        `찾은 사업 ${sr.res.bizCount.toLocaleString('ko-KR')}개 · 예산 합계 ${LF.formatNumber(sr.res.bdgSum / LF.UNITS[sr.unitForList].divisor, sr.unitForList)} ${LF.UNITS[sr.unitForList].label}`
+          + (share != null ? ` · 같은 조건 전체의 ${share.toFixed(1)}%` : ''),
+        '사업 수는 세부사업 코드 기준 고유 개수입니다.',
+        '검색은 사업명 글자에만 걸립니다. 같은 사업을 지자체마다 다르게 적기도 하므로 빠진 사업이 있을 수 있습니다.',
+      ],
+    };
   }
 
   // ── 이벤트 ──────────────────────────────────────────────
@@ -1142,38 +1263,38 @@
     $('#chkBand').addEventListener('change', e => { state.band = e.target.checked; writeHash(); render(); });
     $('#selYear').addEventListener('change', e => { state.year = +e.target.value; writeHash(); render(); });
 
-    $('#mapYear').addEventListener('change', e => { state.mapYear = +e.target.value; renderMap(); });
+    $('#mapYear').addEventListener('change', e => { state.mapYear = +e.target.value; render(); });
     $('#compBase').addEventListener('change', e => {
-      state.compBase = e.target.value; writeHash(); renderComp();
+      state.compBase = e.target.value; writeHash(); render();
     });
     $('#mapBase').addEventListener('change', e => {
       // 기준이 바뀌면 항목 목록도 바뀐다. 전에 고른 항목이 새 기준에
       // 없으면 그 기준의 첫 항목으로 떨어진다.
-      state.mapBase = e.target.value; fillMapItems(); writeHash(); renderMap();
+      state.mapBase = e.target.value; fillMapItems(); writeHash(); render();
     });
     $('#mapItem').addEventListener('change', e => {
-      state.mapItem = e.target.value; writeHash(); renderMap();
+      state.mapItem = e.target.value; writeHash(); render();
     });
     $('#mapLabelMode').addEventListener('click', e => {
       const b = e.target.closest('button[data-lbl]'); if (!b) return;
-      state.mapLabel = b.dataset.lbl; syncControls(); writeHash(); renderMap();
+      state.mapLabel = b.dataset.lbl; syncControls(); writeHash(); render();
     });
     $('#mapZoomIn').addEventListener('click', () => LFMap.zoomBy($('#mapBox'), 1.6));
     $('#mapZoomOut').addEventListener('click', () => LFMap.zoomBy($('#mapBox'), 1 / 1.6));
     $('#mapZoomReset').addEventListener('click', () => LFMap.resetView($('#mapBox')));
     $('#mapScope').addEventListener('click', e => {
       const b = e.target.closest('button[data-scope]'); if (!b) return;
-      state.mapScope = b.dataset.scope; syncControls(); writeHash(); renderMap();
+      state.mapScope = b.dataset.scope; syncControls(); writeHash(); render();
     });
 
     ['#qTerms', '#qExclude'].forEach(sel => {
       $(sel).addEventListener('input', e => {
         state[sel === '#qTerms' ? 'qTerms' : 'qExclude'] = e.target.value;
-        clearTimeout(timer); timer = setTimeout(() => { writeHash(); renderSearch(); }, 180);
+        clearTimeout(timer); timer = setTimeout(() => { writeHash(); render(); }, 180);
       });
     });
-    $('#qMode').addEventListener('change', e => { state.qMode = e.target.value; renderSearch(); });
-    $('#qPart').addEventListener('change', e => { state.qPart = e.target.value; renderSearch(); });
+    $('#qMode').addEventListener('change', e => { state.qMode = e.target.value; render(); });
+    $('#qPart').addEventListener('change', e => { state.qPart = e.target.value; render(); });
 
     $('#navTabs').addEventListener('click', e => {
       const b = e.target.closest('button[data-tab]'); if (b) selectTab(b.dataset.tab);
@@ -1201,9 +1322,9 @@
     let rt = null;
     window.addEventListener('resize', () => {
       if (state.tab !== 'map') return;
-      clearTimeout(rt); rt = setTimeout(() => renderMap(), 200);
+      clearTimeout(rt); rt = setTimeout(() => render(), 200);
     });
   }
 
   document.addEventListener('DOMContentLoaded', init);
-})();
+})(window);
